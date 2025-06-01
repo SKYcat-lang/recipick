@@ -20,6 +20,23 @@
   .a-hover:hover {
     color: black; /* 부트스트랩의 large shadow 변수 사용 */
   }
+
+  .btn-primary-cust {
+  --bs-btn-color: #fff;
+  --bs-btn-bg: #e9723b;
+  --bs-btn-border-color: #e9723b;
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: #d66937;
+  --bs-btn-hover-border-color: #d66937;
+  --bs-btn-focus-shadow-rgb: 49, 132, 253;
+  --bs-btn-active-color: #fff;
+  --bs-btn-active-bg: #cc6332;
+  --bs-btn-active-border-color: #cc6332;
+  --bs-btn-active-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.125);
+  --bs-btn-disabled-color: #fff;
+  --bs-btn-disabled-bg: #e9723b;
+  --bs-btn-disabled-border-color: #e9723b;
+}
 </style>
 <main>
     <div class="container">
@@ -51,7 +68,7 @@
                                 <input type="password" class="form-control rounded-3" id="floatingPassword" placeholder="Password">
                                 <label for="floatingPassword">Password</label>
                             </div>
-                            <button class="w-100 mb-2 btn btn-lg rounded-3 btn-primary" type="submit">Sign up</button>
+                            <button class="w-100 mb-2 btn btn-lg rounded-3 btn-primary-cust" type="submit">Sign up</button>
                             <small class="text-body-secondary">By clicking Sign up, you agree to the terms of use.</small>
                             <div class="py-2 mb-3 form-check d-flex">
                                 <input type="checkbox" class="form-check-input" id="floatingCheck">
