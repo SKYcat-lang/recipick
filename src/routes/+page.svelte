@@ -1,6 +1,6 @@
 <script>
-  import Header from '$lib/components/header.svelte'; // 경로를 확인하세요. '$lib'는 src/lib를 가리킵니다.
-  import Footer from '$lib/components/footer.svelte';
+    import Header from '$lib/components/header.svelte'; // 경로를 확인하세요. '$lib'는 src/lib를 가리킵니다.
+    import Footer from '$lib/components/footer.svelte';
 </script>
 <Header />
 <style>
@@ -13,30 +13,65 @@
     }
   /* 부트스트랩 shadow-sm 클래스에 hover 효과를 추가하는 CSS */
 
-  .a-hover {
-    color: gray; /* 부트스트랩의 large shadow 변수 사용 */
-  }
+    .a-hover {
+        color: gray;
+    }
 
-  .a-hover:hover {
-    color: black; /* 부트스트랩의 large shadow 변수 사용 */
-  }
+    .a-hover:hover {
+        color: black;
+    }
 
-  .btn-primary-cust {
-  --bs-btn-color: #fff;
-  --bs-btn-bg: #e9723b;
-  --bs-btn-border-color: #e9723b;
-  --bs-btn-hover-color: #fff;
-  --bs-btn-hover-bg: #d66937;
-  --bs-btn-hover-border-color: #d66937;
-  --bs-btn-focus-shadow-rgb: 49, 132, 253;
-  --bs-btn-active-color: #fff;
-  --bs-btn-active-bg: #cc6332;
-  --bs-btn-active-border-color: #cc6332;
-  --bs-btn-active-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.125);
-  --bs-btn-disabled-color: #fff;
-  --bs-btn-disabled-bg: #e9723b;
-  --bs-btn-disabled-border-color: #e9723b;
-}
+    .btn-primary-cust {
+        --bs-btn-color: #fff;
+        --bs-btn-bg: #ffb3d7;
+        --bs-btn-border-color: #ffb3d7;
+        --bs-btn-hover-color: #fff;
+        --bs-btn-hover-bg: #ff91c5;
+        --bs-btn-hover-border-color: #ff91c5;
+        --bs-btn-focus-shadow-rgb: 49, 132, 253;
+        --bs-btn-active-color: #fff;
+        --bs-btn-active-bg: #f669ab;
+        --bs-btn-active-border-color: #f669ab;
+        --bs-btn-active-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.125);
+        --bs-btn-disabled-color: #fff;
+        --bs-btn-disabled-bg: #f669ab;
+        --bs-btn-disabled-border-color: #f669ab;
+    }
+    /* 1. 카카오(Kakao) 노란색 버튼 */
+    .btn-outline-kakao {
+        --bs-btn-color: #c9a100;
+        --bs-btn-border-color: #c9a100;
+        --bs-btn-hover-color: #000; /* 밝은 배경이라 글자색은 검은색으로 변경 */
+        --bs-btn-hover-bg: #FEE500;
+        --bs-btn-hover-border-color: #FEE500;
+        --bs-btn-focus-shadow-rgb: 254, 229, 0;
+        --bs-btn-active-color: #000; /* 밝은 배경이라 글자색은 검은색으로 변경 */
+        --bs-btn-active-bg: #FEE500;
+        --bs-btn-active-border-color: #FEE500;
+        --bs-btn-active-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.125);
+        --bs-btn-disabled-color: #FEE500;
+        --bs-btn-disabled-bg: transparent;
+        --bs-btn-disabled-border-color: #FEE500;
+        --bs-gradient: none;
+    }
+
+    /* 2. 깃허브(GitHub) 보라색 버튼 */
+    .btn-outline-github {
+        --bs-btn-color: #8250DF;
+        --bs-btn-border-color: #8250DF;
+        --bs-btn-hover-color: #fff;
+        --bs-btn-hover-bg: #8250DF;
+        --bs-btn-hover-border-color: #8250DF;
+        --bs-btn-focus-shadow-rgb: 130, 80, 223;
+        --bs-btn-active-color: #fff;
+        --bs-btn-active-bg: #8250DF;
+        --bs-btn-active-border-color: #8250DF;
+        --bs-btn-active-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.125);
+        --bs-btn-disabled-color: #8250DF;
+        --bs-btn-disabled-bg: transparent;
+        --bs-btn-disabled-border-color: #8250DF;
+        --bs-gradient: none;
+    }
 </style>
 <main>
     <div class="container">
@@ -77,12 +112,12 @@
                             </div>
                             <hr class="my-4">
                             <h2 class="fs-5 fw-bold mb-3">다른 방식으로 로그인</h2>
-                            <button class="w-100 py-2 mb-2 btn btn-outline-secondary rounded-3" type="submit">
-                                <svg class="bi me-1" width="16" height="16" aria-hidden="true"><use xlink:href="#google"></use></svg>Sign up with Google</button>
                             <button class="w-100 py-2 mb-2 btn btn-outline-primary rounded-3" type="submit">
-                                <svg class="bi me-1" width="16" height="16" aria-hidden="true"><use xlink:href="#facebook"></use></svg>Sign up with Facebook</button>
-                            <button class="w-100 py-2 mb-2 btn btn-outline-secondary rounded-3" type="submit">
+                                <svg class="bi me-1" width="16" height="16" aria-hidden="true"><use xlink:href="#google"></use></svg>Sign up with Google</button>
+                            <button class="w-100 py-2 mb-2 btn btn-outline-github rounded-3" type="submit">
                                 <svg class="bi me-1" width="16" height="16" aria-hidden="true"><use xlink:href="#github"></use></svg>Sign up with GitHub</button>
+                            <button class="w-100 py-2 mb-2 btn btn-outline-kakao rounded-3" type="submit">
+                                <svg class="bi me-1" width="16" height="16" aria-hidden="true"><use xlink:href="#kakao"></use></svg>Sign up with Kakao</button>
                             </form>
                         </div>
                         </div>
