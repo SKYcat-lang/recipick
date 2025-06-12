@@ -23,19 +23,19 @@
 
     .btn-primary-cust {
         --bs-btn-color: #fff;
-        --bs-btn-bg: #ffb3d7;
-        --bs-btn-border-color: #ffb3d7;
+        --bs-btn-bg: #ff7c2d;
+        --bs-btn-border-color: #ff7c2d;
         --bs-btn-hover-color: #fff;
-        --bs-btn-hover-bg: #ff91c5;
-        --bs-btn-hover-border-color: #ff91c5;
+        --bs-btn-hover-bg: #e8732a;
+        --bs-btn-hover-border-color: #e8732a;
         --bs-btn-focus-shadow-rgb: 49, 132, 253;
         --bs-btn-active-color: #fff;
-        --bs-btn-active-bg: #f669ab;
-        --bs-btn-active-border-color: #f669ab;
+        --bs-btn-active-bg: #d26520;
+        --bs-btn-active-border-color: #d26520;
         --bs-btn-active-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.125);
         --bs-btn-disabled-color: #fff;
-        --bs-btn-disabled-bg: #f669ab;
-        --bs-btn-disabled-border-color: #f669ab;
+        --bs-btn-disabled-bg: #d26520;
+        --bs-btn-disabled-border-color: #d26520;
     }
     /* 1. 카카오(Kakao) 노란색 버튼 */
     .btn-outline-kakao {

@@ -14,7 +14,7 @@
       href="/"
       class="d-flex align-items-center text-dark text-decoration-none"
     >
-      <span class="fs-3 text-decoration-underline" style="font-family: 'Playfair Display';">Ricipick</span>
+      <span class="fs-3 text-decoration-underline" style="font-family: 'Playfair Display';">Recipick</span>
     </a>
 
     <nav class="d-inline-flex mt-2 mt-md-0 ms-md-auto">
