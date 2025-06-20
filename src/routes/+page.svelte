@@ -44,7 +44,7 @@
                                         </div>
                                     </div>
                                     <p class="text-end">
-                                        <a class=" text-muted px-1" href="#">마이페이지</a>
+                                        <a class=" text-muted px-1" href="manager">마이페이지</a>
                                         <a class=" text-muted px-1" href="#" on:click={handleLogout}>로그아웃</a>
                                     </p>
                                 </div>

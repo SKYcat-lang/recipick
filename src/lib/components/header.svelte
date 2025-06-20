@@ -18,9 +18,9 @@
     </a>
 
     <nav class="d-inline-flex mt-2 mt-md-0 ms-md-auto">
-      <a class="me-3 py-2 text-dark text-decoration-none" href="/storage">냉장고</a>
+      <a class="me-3 py-2 text-dark text-decoration-none" href="storage">냉장고</a>
       <a class="me-3 py-2 text-dark text-decoration-none" href="#">레시피</a>
-      <a class="me-3 py-2 text-dark text-decoration-none" href="#">구매</a>
+      <a class="me-3 py-2 text-dark text-decoration-none" href="purchase">구매</a>
       <a class="py-2 text-dark text-decoration-none" href="#">공지사항</a>
     </nav>
   </div>
