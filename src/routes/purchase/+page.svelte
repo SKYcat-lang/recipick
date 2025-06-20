@@ -16,11 +16,11 @@ let items = [
 <Header />
 
 <main class="p-5">
-  <div class="purchase-container container-lg">
-    <h2 style="text-align:center;">식자재 구매</h2>
+  <div class="purchase-container container-lg bg-white bg-opacity-75 rounded-4 p-5 shadow-lg">
+    <h2 class="text-center pb-5">식자재 구매</h2>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:32px;max-width:900px;margin:0 auto;">
       {#each items as item}
-        <div style="background:#fff;border-radius:16px;padding:24px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+        <div class="bg-white rounded-5 p-4 text-center shadow">
           <div style="width:100px;height:100px;background:#eee;border-radius:12px;margin:0 auto 12px auto;"></div>
           <div style="font-size:1.1rem;font-weight:bold;">{item.name}</div>
           <div style="color:#888;margin-bottom:12px;">최저가: {item.price}원</div>
@@ -42,12 +42,5 @@ let items = [
     background-repeat: no-repeat;
     background-attachment: fixed;
     min-height: 100vh;
-  }
-  .purchase-container {
-    background: rgba(255,255,255,0.85);
-    border-radius: 32px;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
-    padding: 32px;
-    max-width: 1200px;
   }
 </style> 
