@@ -1,6 +1,6 @@
 <script lang="ts">
 import Header from '$lib/components/header.svelte';
-class Items {
+class Item {
   name: String;
   price: Number;
   constructor(name: String, price: Number) {
@@ -9,12 +9,12 @@ class Items {
   }
 }
 let items = [
-  new Items('당근', 3410),
-  new Items('양파', 1290),
-  new Items('닭고기', 7860),
-  new Items('감자', 4410),
-  new Items('대파', 5560),
-  new Items('고추', 1230),
+  new Item('당근', 3410),
+  new Item('양파', 1290),
+  new Item('닭고기', 7860),
+  new Item('감자', 4410),
+  new Item('대파', 5560),
+  new Item('고추', 1230),
 ];
 </script>
 
