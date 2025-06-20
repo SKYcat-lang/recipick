@@ -1,12 +1,20 @@
 <script lang="ts">
 import Header from '$lib/components/header.svelte';
+class Items {
+  name: String;
+  price: Number;
+  constructor(name: String, price: Number) {
+    this.name = name;
+    this.price = price;
+  }
+}
 let items = [
-  { name: '당근', price: 3410 },
-  { name: '양파', price: 1290 },
-  { name: '닭고기', price: 7860 },
-  { name: '감자', price: 4410 },
-  { name: '대파', price: 5560 },
-  { name: '고추', price: 1230 },
+  new Items('당근', 3410),
+  new Items('양파', 1290),
+  new Items('닭고기', 7860),
+  new Items('감자', 4410),
+  new Items('대파', 5560),
+  new Items('고추', 1230),
 ];
 </script>
 
