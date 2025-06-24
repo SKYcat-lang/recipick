@@ -25,20 +25,27 @@ export type Amount = AmountCount | AmountStep | AmountExact;
 // --- Data Structure Interfaces/Classes ---
 
 export interface ProductInfo {
+  /*
+  * 아이템에 사용되는 식재료 정보 클래스
+  * productId: 내부 구분자
+  * name: 식재료의 이름
+  * category: 식재료 카테고리
+  * purchaseDate: 등록일
+  * source: 상품이 어디서 생성됐는지barcode: 바코드, database: DB, api: api, custom: 사용자 생성
+  */
   productId: string;
   name: string;
   category: string;
   
   // 새로 추가된 속성
   source: 'barcode' | 'database' | 'api' | 'custom'; // 이 상품 정보가 어디서 왔는지
-  ownerId?: string; // source가 'custom'일 경우, 어떤 사용자가 생성했는지
 }
 
 export class InventoryItem {
   /*
   * 냉장고에 사용되는 아이템 클래스
   * id: 내부 구분자
-  * product: 아이템 정보 (이름, 카테고리 등 식품의 정보)
+  * product: 식재료 정보 클래스 (ProductInfo)
   * amount: 수량 (X개, Xkg, 많음 등 하이브리드 대응)
   * purchaseDate: 등록일
   * expirationDate: 만료일 (유통기한)
