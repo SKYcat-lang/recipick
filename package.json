@@ -15,6 +15,7 @@
 		"@sveltejs/adapter-auto": "^6.0.0",
 		"@sveltejs/kit": "^2.16.0",
 		"@sveltejs/vite-plugin-svelte": "^5.0.0",
+		"@types/marked": "^5.0.2",
 		"@types/masonry-layout": "^4.2.8",
 		"svelte": "^5.0.0",
 		"svelte-check": "^4.0.0",
@@ -23,6 +24,7 @@
 	},
 	"dependencies": {
 		"bootstrap": "^5.3.6",
+		"marked": "^15.0.12",
 		"masonry-layout": "^4.2.2",
 		"uuid": "^11.1.0"
 	}

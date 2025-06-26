@@ -36,6 +36,7 @@ export interface ProductInfo {
   productId: string;
   name: string;
   category: string;
+  image?: string;
   
   // 새로 추가된 속성
   source: 'barcode' | 'database' | 'api' | 'custom'; // 이 상품 정보가 어디서 왔는지
@@ -58,13 +59,15 @@ export class InventoryItem {
   expirationDate?: Date;
   memo: string;
   memouse: boolean | false | undefined;
+  public image_override?: string;
 
   constructor(
     product: ProductInfo,
     amount: Amount,
     purchaseDate: Date,
     memo: string = '',
-    expirationDate?: Date
+    expirationDate?: Date,
+    image_override?: string
   ) {
     this.id = uuidv4();
     this.product = product;
@@ -72,6 +75,7 @@ export class InventoryItem {
     this.purchaseDate = purchaseDate;
     this.memo = memo;
     this.expirationDate = expirationDate;
+    this.image_override = image_override;
   }
 
   // 현재 남은 양을 문자열로 변환해주는 메소드
@@ -87,5 +91,10 @@ export class InventoryItem {
       case 'exact':
         return `${this.amount.value}${this.amount.unit}`;
     }
+  }
+  
+  get displayImage(): string | undefined {
+    // 커스텀 이미지가 있으면 그것을, 없으면 제품의 기본 이미지를 반환
+    return this.image_override || this.product.image;
   }
 }
