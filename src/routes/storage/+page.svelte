@@ -12,6 +12,13 @@
   import { onMount, onDestroy, tick } from "svelte";
   import type Masonry from "masonry-layout";
   import { marked } from "marked"; // ★ 1. marked 라이브러리 임포트
+  import { GoogleGenerativeAI } from "@google/generative-ai";
+  import { browser } from "$app/environment";
+
+  // 상태 추가
+  let isDesktop = false;
+
+  const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
 
   // --- 1. COMPONENT STATE ---
   // 이 페이지의 핵심 데이터입니다.
@@ -23,10 +30,13 @@
   let aiResponse = "";
   let isWaitingForAI = false;
 
+  // 레시피 저장?
+  let savedRecipes: { recipe: string; keywords: string[] }[] = [];
+
   // ★★★ handleImageError 함수 아래에 AI 추천 요청 함수 추가 ★★★
   async function getAiRecipe() {
     isWaitingForAI = true;
-    aiResponse = ""; // 이전 응답 지우기
+    aiResponse = "";
 
     let prompt = "";
     const myIngredientsList = ingredients
@@ -34,40 +44,99 @@
       .join(", ");
 
     if (aiRecommendationType === "current") {
-      prompt = `현재 가지고 있는 재료는 ${myIngredientsList} 입니다. 이 재료들을 활용한 멋진 레시피를 하나 창작해주세요.`;
+      prompt = `
+# 핵심 명령:
+반드시 응답 형식 규칙을 지켜주세요:
+1. 레시피 본문은 Markdown 형식으로 작성.
+2. 맨 마지막에 키워드 블록을 추가하세요.
+   - 형식: <key>키워드|키워드|...</key>
+   - 키워드 후보: [디저트 | 샐러드 | 고기 | 해산물 | 국/탕 | 면요리 | 채식 | 한식 | 양식 | 중식 | 일식 | 동남아 | 퓨전]
+   - 반드시 1~3개 선택.
+   - 구분자는 "|" (띄어쓰기 없음).
+   - 예시: <key>한식|채식|퓨전</key>
+3. '<key>','</key>' split 구문이 빠지면 응답은 무효가 됩니다. 반드시 포함하세요.
+4. 위 형식 이외의 불필요한 텍스트, 주석, 설명을 쓰지 말 것.
+
+# 사용자 요청:
+현재 가지고 있는 재료는 ${myIngredientsList} 입니다.
+이 재료들을 활용해서 하나의 새로운 레시피를 창작해주세요.
+
+# 형식 규칙:
+- 반드시 아래 형식을 지켜서 답변하세요:
+## 🍽️ 레시피 이름
+
+**📋 필요 재료**
+- 보유 재료: (현재 가진 재료 기반)
+- 추가 추천 재료: (있다면 제안)
+
+**👨‍🍳 조리법**
+1. 단계별 상세 설명
+
+**✨ 꿀팁**
+- 요리 성공에 도움되는 팁
+
+<key>키워드 블록</key>
+  `;
     } else {
-      if (!desiredMenuInput.trim()) {
-        alert("메뉴나 키워드를 입력해주세요.");
-        isWaitingForAI = false;
-        return;
-      }
-      prompt = `"${desiredMenuInput}" 컨셉의 레시피를 창작해줘. 현재 가진 재료는 ${myIngredientsList} 이니, 이 재료들을 활용하면 더 좋아.`;
+      prompt = `
+# 핵심 명령:
+반드시 응답 형식 규칙을 지켜주세요:
+1. 레시피 본문은 Markdown 형식으로 작성.
+2. 맨 마지막에 키워드 블록을 추가하세요.
+   - 형식: <key>키워드|키워드|...</key>
+   - 키워드 후보: [디저트 | 샐러드 | 고기 | 해산물 | 국/탕 | 면요리 | 채식 | 한식 | 양식 | 중식 | 일식 | 동남아 | 퓨전]
+   - 반드시 1~3개 선택.
+   - 구분자는 "|" (띄어쓰기 없음).
+   - 예시: <key>한식|채식|퓨전</key>
+3. '<key>','</key>' split 구문이 빠지면 응답은 무효가 됩니다. 반드시 포함하세요.
+4. 위 형식 이외의 불필요한 텍스트, 주석, 설명을 쓰지 말 것.
+
+# 사용자 요청:
+"${desiredMenuInput}" 컨셉의 레시피를 창작해주세요.
+현재 가진 재료는 ${myIngredientsList} 입니다. 이 재료들을 활용하면 더 좋아요.
+
+# 형식 규칙:
+- 반드시 아래 형식을 지켜서 답변하세요:
+## 🍽️ 레시피 이름
+
+**📋 필요 재료**
+- 보유 재료: (현재 가진 재료 기반)
+- 추가 추천 재료: (있다면 제안)
+
+**👨‍🍳 조리법**
+1. 단계별 상세 설명
+
+**✨ 꿀팁**
+- 요리 성공에 도움되는 팁
+
+<key>키워드 블록</key>
+  `;
     }
 
-    console.log("AI에게 보낼 프롬프트:", prompt);
-
-    // ★★★★★ 현재 재료 기반의 새로운 데모 응답으로 교체 ★★★★★
-    setTimeout(() => {
-      aiResponse = `### 🌮 AI 창작! 구수한 된장 포크 타코
-
-또띠아와 된장의 의외의 만남! 든든하고 특별한 한 끼 식사로 도전해보세요.
-
-**✅ 필요 재료**
-* **보유 재료:** 또띠아, 찌개용 돼지고기, 감자, 된장, 고추
-* **추가하면 좋은 재료:** 양파, 다진 마늘
-
-**📋 조리법**
-1.  감자는 얇게 채 썰어 물에 잠시 담가 전분기를 빼줍니다.
-2.  돼지고기는 잘게 다지고, 고추는 송송 썰어주세요.
-3.  팬에 기름을 두르고 돼지고기와 다진 마늘을 볶다가, 고기가 익으면 감자채와 고추를 넣고 함께 볶습니다.
-4.  된장 1큰술에 물 2큰술, 설탕 1작은술을 섞어 '특제 된장 소스'를 만듭니다.
-5.  또띠아를 살짝 구운 뒤, 그 위에 볶은 재료를 올리고 된장 소스를 뿌려주면 완성!
-
-> **✨ 꿀팁!**
-> 돼지고기에 후추로 밑간을 살짝 해주면 풍미가 더욱 살아납니다. 모짜렐라 치즈가 있다면 살짝 녹여 올려도 환상적인 맛을 자랑합니다.`;
-
+    try {
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      const result = await model.generateContent(prompt);
+      aiResponse = result.response.text();
+    } catch (err) {
+      console.error("Gemini API 오류:", err);
+      aiResponse = "⚠️ AI 응답을 가져오는 중 문제가 발생했습니다.";
+    } finally {
       isWaitingForAI = false;
-    }, 2000);
+    }
+  }
+
+  function parseAiResponse(resp: string) {
+    const keyMatch = resp.match(/<key>(.*?)<\/key>/);
+    const keywords = keyMatch ? keyMatch[1].split("|") : [];
+    const recipeText = resp.replace(/<key>.*<\/key>/, "").trim();
+    return { recipe: recipeText, keywords };
+  }
+
+  function saveRecipe() {
+    if (!aiResponse.trim()) return;
+    const { recipe, keywords } = parseAiResponse(aiResponse);
+    savedRecipes = [...savedRecipes, { recipe, keywords }];
+    alert("레시피가 저장되었습니다!");
   }
 
   // 데모 시연을 위한 임시 데이터
@@ -183,8 +252,9 @@
 
   // --- 3. MASONRY GRID: Logic ---
   // Masonry 벽돌 레이아웃과 관련된 로직입니다.
+  let masonryMobileEl: HTMLElement;
+  let masonryDesktopEl: HTMLElement;
   let masonryInstance: Masonry | null = null;
-  let masonryContainer: HTMLElement;
 
   // --- ★★★ Food Safety Korea API (XML) 연동 로직 시작 ★★★ ---
 
@@ -408,41 +478,135 @@
       modalElement.addEventListener("hidden.bs.modal", resetForm);
     }
 
-    // Masonry 인스턴스 생성
-    (async () => {
-      const MasonryModule = await import("masonry-layout");
-      const Masonry = MasonryModule.default;
-      if (masonryContainer) {
-        masonryInstance = new Masonry(masonryContainer, {
-          itemSelector: ".grid-item",
-          percentPosition: true,
-          gutter: 16,
-        });
-      }
-    })();
+    const tabButtons = document.querySelectorAll<HTMLElement>(
+      '[data-bs-toggle="tab"]'
+    );
+    tabButtons.forEach((btn) => {
+      btn.addEventListener("shown.bs.tab", async () => {
+        await tick();
+        masonryInstance?.reloadItems();
+        masonryInstance?.layout();
+        // ✅ 탭 전환 이후 페인트가 끝난 뒤 보정
+        requestAnimationFrame(() => debouncedLayout(30));
+      });
+    });
+
+    await tick(); // 바인딩된 엘리먼트가 DOM에 놓인 뒤 실행
+    const el = activeGrid();
+    if (el) await initMasonry(el);
+
+    // 브레이크포인트 전환 시 재초기화
+    const mql = window.matchMedia("(min-width: 992px)");
+    const handler = async () => {
+      await tick();
+      const el2 = activeGrid();
+      if (el2) await initMasonry(el2);
+    };
+    mql.addEventListener?.("change", handler);
+    // ✅ 컴포넌트 destroy 시 자동 호출
+    return () => {
+      mql.removeEventListener?.("change", handler);
+    };
+  });
+
+  onMount(() => {
+    if (!browser) return;
+    const mql = window.matchMedia("(min-width: 992px)");
+    const apply = () => (isDesktop = mql.matches);
+    apply(); // 초기값 반영
+    mql.addEventListener("change", apply);
+    // 정리
+    return () => mql.removeEventListener("change", apply);
   });
 
   onDestroy(() => {
-    if (masonryInstance) {
-      masonryInstance.destroy();
-    }
-    if (modalElement) {
-      modalElement.removeEventListener("hidden.bs.modal", resetForm);
-    }
+    masonryInstance?.destroy();
+    ro?.disconnect();
+    modalElement?.removeEventListener("hidden.bs.modal", resetForm);
   });
+
+  function activeGrid(): HTMLElement | null {
+    // 화면에 보여지는 그리드만 선택
+    const desktopVisible = window.matchMedia("(min-width: 992px)").matches;
+    return desktopVisible ? masonryDesktopEl : masonryMobileEl;
+  }
+
+  let ro: ResizeObserver | null = null;
+  let layoutRAF: number | null = null;
+  function debouncedLayout(delay = 0) {
+    if (layoutRAF) cancelAnimationFrame(layoutRAF);
+    layoutRAF = requestAnimationFrame(() => {
+      setTimeout(() => masonryInstance?.layout(), delay);
+    });
+  }
+
+  async function initMasonry(targetEl: HTMLElement) {
+    if (!targetEl) return;
+
+    // 기존 인스턴스 정리
+    masonryInstance?.destroy();
+    masonryInstance = null;
+    ro?.disconnect();
+    ro = null;
+
+    // 모듈 로드
+    const MasonryModule = await import("masonry-layout");
+    const Masonry = MasonryModule.default;
+
+    // initLayout 끄기!
+    masonryInstance = new Masonry(targetEl, {
+      itemSelector: ".grid-item",
+      columnWidth: ".grid-sizer",
+      percentPosition: true,
+      gutter: 16,
+      transitionDuration: 0,
+      initLayout: false, // ✅ 초기 자동 레이아웃 비활성화
+    });
+
+    // 이미지 로딩 감지
+    const ImagesLoaded = (await import("imagesloaded")).default as any;
+    const img = ImagesLoaded(targetEl);
+
+    // 진행 중에도 살짝살짝 잡아주되, 비용 줄이려고 rAF 디바운스
+    img.on("progress", () => debouncedLayout());
+
+    // 모든 이미지 완료 후 "진짜" 첫 레이아웃
+    img.on("always", async () => {
+      // 폰트가 있으면 폰트도 준비될 때까지 대기 (있으면)
+      if ((document as any).fonts?.ready) {
+        try {
+          await (document as any).fonts.ready;
+        } catch {}
+      }
+      await tick();
+      // 더블 rAF로 레이아웃 안정화
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          masonryInstance?.layout(); // ✅ 첫 정밀 레이아웃
+          // 텍스트에어리어 자동높이·탭 토글 등 추가 변동 대비 한번 더
+          debouncedLayout(50); // 50ms 뒤 보정
+        });
+      });
+    });
+
+    // 아이템 크기 변동(메모 편집, 이미지 늦게 변환 등)에 대응
+    ro = new ResizeObserver(() => debouncedLayout());
+    targetEl.querySelectorAll(".grid-item").forEach((el) => ro!.observe(el));
+  }
 
   // ★★★★★ 3. 반응형 로직 통합 및 개선 ★★★★★
   $: if (ingredients && ingredients.length > 0) {
     // ingredients 배열이 존재하고, 비어있지 않을 때만 레시피를 불러옵니다.
     fetchRecipes();
+  }
 
-    // Masonry 레이아웃 업데이트는 그대로 유지합니다.
-    if (masonryInstance) {
-      setTimeout(() => {
-        masonryInstance?.reloadItems();
-        masonryInstance?.layout();
-      }, 100);
-    }
+  $: if (ingredients && ingredients.length > 0 && masonryInstance) {
+    setTimeout(() => {
+      masonryInstance?.reloadItems();
+      masonryInstance?.layout();
+      // ✅ 데이터 반영 직후도 보정
+      requestAnimationFrame(() => debouncedLayout(30));
+    }, 0);
   }
 
   // --- 5. SVELTE ACTIONS ---
@@ -566,6 +730,27 @@
     let product = SYSTEM_PRODUCTS.find((p) => p.productId === productId);
     if (product) return product;
     return USER_CUSTOM_PRODUCTS.find((p) => p.productId === productId);
+  }
+
+  function extractTitle(md: string) {
+    // 첫 번째 마크다운 헤더(# …) 또는 첫 줄을 제목으로 사용
+    const m = md.match(/^#+\s*(.+)$/m);
+    return m
+      ? m[1]
+      : md
+          .split("\n")[0]
+          .replace(/^[-*#>\s]+/, "")
+          .slice(0, 60);
+  }
+
+  function openSaved(i: number) {
+    // 필요 시 모달/상세 페이지로 변경 가능. 임시로 aiResponse에 로드
+    const { recipe } = savedRecipes[i];
+    aiResponse = recipe;
+    // 스크롤 올려서 바로 보이게
+    try {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch {}
   }
 </script>
 
@@ -920,11 +1105,442 @@
 
 <main class="main">
   <div class="container-lg py-5">
-    <div class="bg-body rounded-3 bg-opacity-75 p-4 p-md-5 shadow-lg">
-      <div class="row">
-        <div class="col">
+    {#if isDesktop}
+      <!-- 데스크톱 전용 UI 렌더 -->
+      <div
+        class="bg-body rounded-3 bg-opacity-75 p-4 p-md-5 shadow-lg d-none d-lg-flex desktop-split"
+      >
+        <div class="row">
+          <div class="col left">
+            <div class="title">냉장고</div>
+            <div class="ingredient-grid" bind:this={masonryDesktopEl}>
+              <div class="grid-sizer"></div>
+              <!-- ✅ 추가: 열폭 기준 -->
+              {#each ingredients as ing}
+                <div class="grid-item bg-white rounded-3">
+                  <div class="ingredient-card">
+                    {#if ing.displayImage}
+                      <img
+                        src={ing.displayImage}
+                        alt={ing.product.name}
+                        class="ingredient-img rounded-3 m-2"
+                        on:error={handleImageError}
+                      />
+                    {:else}
+                      <div class="ingredient-img rounded-3 m-2"></div>
+                    {/if}
+                    <div class="text-center mb-2">
+                      <div>{ing.product.name}</div>
+                      {#if ing.expirationDate}
+                        <small
+                          >{ing.expirationDate?.getUTCFullYear()}년 {ing.expirationDate?.getMonth() +
+                            1}월 {ing.expirationDate?.getDate()}일 까지</small
+                        >
+                      {:else}
+                        <small>기한 없음</small>
+                      {/if}
+                    </div>
+                    <div class="counter">
+                      {#if ing.amount.type == "count"}
+                        <!-- svelte-ignore a11y_consider_explicit_label -->
+                        <button
+                          class="btn btn-secondary btn-sm"
+                          on:click={() => ing.amount.value--}
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="16"
+                            height="16"
+                            fill="currentColor"
+                            class="bi bi-dash"
+                            viewBox="0 2 16 16"
+                          >
+                            <path
+                              d="M4 8a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7A.5.5 0 0 1 4 8"
+                            />
+                          </svg>
+                        </button>
+                        <span>{ing.getDisplayAmount()}</span>
+                        <!-- svelte-ignore a11y_consider_explicit_label -->
+                        <button
+                          class="btn btn-secondary btn-sm"
+                          on:click={() => ing.amount.value++}
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="16"
+                            height="16"
+                            fill="currentColor"
+                            class="bi bi-plus"
+                            viewBox="0 2 16 16"
+                          >
+                            <path
+                              d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4"
+                            />
+                          </svg>
+                        </button>
+                      {:else if ing.amount.type == "exact"}
+                        <span>{ing.getDisplayAmount()}</span>
+                      {:else if ing.amount.type == "step"}
+                        <span>{ing.getDisplayAmount()}</span>
+                      {/if}
+                      {#if ing.amount.type == "step"}
+                        <!-- svelte-ignore a11y_consider_explicit_label -->
+                        <button
+                          class="btn btn-light col position-relative"
+                          on:click={() => 0}
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="16"
+                            height="16"
+                            fill="currentColor"
+                            class="bi bi-sliders2"
+                            viewBox="0 0 16 16"
+                          >
+                            <path
+                              fill-rule="evenodd"
+                              d="M10.5 1a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0V4H1.5a.5.5 0 0 1 0-1H10V1.5a.5.5 0 0 1 .5-.5M12 3.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5m-6.5 2A.5.5 0 0 1 6 6v1.5h8.5a.5.5 0 0 1 0 1H6V10a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5M1 8a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2A.5.5 0 0 1 1 8m9.5 2a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0V13H1.5a.5.5 0 0 1 0-1H10v-1.5a.5.5 0 0 1 .5-.5m1.5 2.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5"
+                            />
+                          </svg>
+                        </button>
+                      {/if}
+                      {#if ing.amount.type == "exact"}
+                        <!-- svelte-ignore a11y_consider_explicit_label -->
+                        <button
+                          class="btn btn-light col position-relative"
+                          on:click={() => 0}
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="16"
+                            height="16"
+                            fill="currentColor"
+                            class="bi bi-sliders2"
+                            viewBox="0 0 16 16"
+                          >
+                            <path
+                              fill-rule="evenodd"
+                              d="M10.5 1a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0V4H1.5a.5.5 0 0 1 0-1H10V1.5a.5.5 0 0 1 .5-.5M12 3.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5m-6.5 2A.5.5 0 0 1 6 6v1.5h8.5a.5.5 0 0 1 0 1H6V10a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5M1 8a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2A.5.5 0 0 1 1 8m9.5 2a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0V13H1.5a.5.5 0 0 1 0-1H10v-1.5a.5.5 0 0 1 .5-.5m1.5 2.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5"
+                            />
+                          </svg>
+                        </button>
+                      {/if}
+                    </div>
+                    {#if !ing.memouse}
+                      <button
+                        type="button"
+                        class="memo-box memo-display {!ing.memo
+                          ? 'is-placeholder'
+                          : ''}"
+                        on:click={() => {
+                          ing.memouse = true;
+                        }}
+                      >
+                        {ing.memo ? ing.memo : "메모 추가"}
+                      </button>
+                    {:else}
+                      <textarea
+                        rows="1"
+                        class="memo-box memo-input"
+                        placeholder="메모 입력"
+                        bind:value={ing.memo}
+                        on:keydown={(event) => {
+                          if (
+                            event.key === "Enter" &&
+                            (event.ctrlKey || event.shiftKey)
+                          ) {
+                            ing.memouse = false;
+                            refreshMasonryLayout(); // ★★★ 저장 시에도 레이아웃 업데이트 ★★★
+                          }
+                        }}
+                        on:blur={() => {
+                          ing.memouse = false;
+                          refreshMasonryLayout(); // ★★★ 편집 완료 시에도 레이아웃 업데이트 ★★★
+                        }}
+                        use:focusInput
+                        use:autoHeight
+                        on:heightChange={refreshMasonryLayout}
+                      ></textarea>
+                    {/if}
+                  </div>
+                </div>
+              {/each}
+              <button
+                class="grid-item rounded-3 p-3 border-dashed position-relative bg-transparent"
+                data-bs-toggle="modal"
+                data-bs-target="#exampleModal"
+              >
+                <div class="text-muted">새 제품 추가하기</div>
+                <div class="m-4 p-4"></div>
+                <div class="position-absolute top-50 start-50 translate-middle">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    fill="currentColor"
+                    class="bi bi-plus-lg"
+                    viewBox="0 0 16 16"
+                  >
+                    <path
+                      fill-rule="evenodd"
+                      d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2"
+                    />
+                  </svg>
+                </div>
+                <small class="text-muted"
+                  >버튼을 눌러 새로운 식품을 추가하세요!</small
+                >
+              </button>
+            </div>
+          </div>
+          <div class="col right">
+            <div class="recommend-header">
+              <span class="recommend-title">재료&레시피 추천</span>
+              <select class="gpt-select">
+                <option>GPT-4</option>
+              </select>
+            </div>
+            <div class="ai-box rounded-2 p-4">
+              <div class="text-center mb-3">
+                <span class="fw-bold fs-5">AI 레시피 추천</span>
+              </div>
+
+              <div class="btn-group w-100 mb-3" role="group">
+                <input
+                  type="radio"
+                  class="btn-check"
+                  name="ai-type-desktop"
+                  id="ai-current-desktop"
+                  autocomplete="off"
+                  checked
+                  bind:group={aiRecommendationType}
+                  value="current"
+                />
+                <label class="btn btn-outline-primary" for="ai-current-desktop"
+                  >보유 재료 기반</label
+                >
+
+                <input
+                  type="radio"
+                  class="btn-check"
+                  name="ai-type-desktop"
+                  id="ai-desired-desktop"
+                  autocomplete="off"
+                  bind:group={aiRecommendationType}
+                  value={"desired"}
+                />
+                <label class="btn btn-outline-primary" for="ai-desired-desktop"
+                  >메뉴/키워드 기반</label
+                >
+              </div>
+
+              {#if aiRecommendationType === "desired"}
+                <div class="form-floating mb-3">
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="desiredMenu"
+                    placeholder="예: 간단한 야식"
+                    bind:value={desiredMenuInput}
+                  />
+                  <label for="desiredMenu"
+                    >원하는 메뉴나 키워드를 입력하세요</label
+                  >
+                </div>
+              {/if}
+
+              <div class="d-grid">
+                <button
+                  class="btn btn-success"
+                  on:click={getAiRecipe}
+                  disabled={isWaitingForAI}
+                >
+                  {#if isWaitingForAI}
+                    <span
+                      class="spinner-border spinner-border-sm"
+                      role="status"
+                      aria-hidden="true"
+                    ></span>
+                    AI가 레시피를 만들고 있어요...
+                  {:else}
+                    AI에게 레시피 추천받기
+                  {/if}
+                </button>
+              </div>
+
+              {#if aiResponse}
+                <div class="ai-response-box mt-4">
+                  {@html marked(aiResponse)}
+                </div>
+                <div class="mt-4">
+                  <button on:click={saveRecipe} class="btn btn-dark">
+                    레시피 저장
+                  </button>
+                </div>
+              {/if}
+            </div>
+            <!-- 저장된 레시피 (가로 스크롤) -->
+            {#if savedRecipes.length > 0}
+              <section class="mt-4">
+                <h5 class="fw-bold mb-2">📂 저장된 레시피</h5>
+
+                <!-- ✅ 스크롤 박스를 독립시킨 래퍼 (min-width:0 중요) -->
+                <div class="saved-outer d-flex">
+                  <div class="flex-grow-1 min-w-0">
+                    <!-- ← 이게 없으면 옆 블럭까지 밀립니다 -->
+                    <!-- ✅ 여기만 가로 스크롤 -->
+                    <div class="saved-hscroll" role="list">
+                      {#each savedRecipes as saved, i}
+                        <article class="card saved-card" role="listitem">
+                          <div class="saved-card-inner">
+                            <h6 class="mb-2 saved-title">
+                              {extractTitle(saved.recipe)}
+                            </h6>
+                            <p class="text-muted small mb-2 saved-subtitle">
+                              키워드: {saved.keywords.join(", ")}
+                            </p>
+                            <button
+                              class="btn btn-sm btn-primary saved-btn"
+                              on:click={() => openSaved(i)}
+                            >
+                              상세보기
+                            </button>
+                          </div>
+                        </article>
+                      {/each}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            {/if}
+            <div class="recipe-list">
+              {#if isLoadingRecipes}
+                <div class="d-flex justify-content-center p-5">
+                  <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                  </div>
+                </div>
+              {:else if apiError}
+                <div class="alert alert-danger" role="alert">{apiError}</div>
+              {:else if recipeResults.length > 0}
+                {#each recipeResults as recipe (recipe.seq)}
+                  <div class="card recipe-card mb-3 shadow-sm">
+                    <div class="row g-0">
+                      <div class="col-4">
+                        <img
+                          src={recipe.image}
+                          class="img-fluid rounded-start"
+                          alt={recipe.name}
+                          on:error={handleImageError}
+                        />
+                      </div>
+                      <div class="col-8 d-flex flex-column">
+                        <div class="card-body">
+                          <h5 class="card-title mb-2">{recipe.name}</h5>
+                          <div class="ingredient-status small">
+                            <div class="text-success">
+                              <strong class="me-2">✅ 보유</strong>
+                              {#if recipe.have.length > 0}
+                                {#each recipe.have as ing, i}
+                                  <span
+                                    class="badge bg-success-subtle text-success-emphasis rounded-pill"
+                                    >{ing}</span
+                                  >
+                                {/each}
+                              {:else}
+                                <span class="text-muted">없음</span>
+                              {/if}
+                            </div>
+                            <div class="text-warning-emphasis mt-1">
+                              <strong class="me-2">🔍 필요</strong>
+                              {#if recipe.missing.length > 0}
+                                {#each recipe.missing as ing, i}
+                                  <span
+                                    class="badge bg-warning-subtle text-warning-emphasis rounded-pill"
+                                    >{ing}</span
+                                  >
+                                {/each}
+                              {:else}
+                                <span
+                                  class="badge bg-info-subtle text-info-emphasis rounded-pill"
+                                  >모든 재료 보유!</span
+                                >
+                              {/if}
+                            </div>
+                          </div>
+                        </div>
+                        <div
+                          class="card-footer bg-transparent border-0 mt-auto text-end pb-2 pe-2"
+                        >
+                          <a
+                            href={recipe.link}
+                            class="btn btn-primary btn-sm"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            레시피 보기
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                {/each}
+              {:else}
+                <div class="text-center text-muted p-4 border rounded-3">
+                  <p class="mb-0">일치하는 레시피가 없습니다.</p>
+                </div>
+              {/if}
+            </div>
+          </div>
+        </div>
+      </div>
+    {:else}
+      <!-- ✅ 모바일 전용 탭 콘텐츠 (lg 미만에서만 보임) -->
+      <ul class="nav nav-tabs mb-3" id="mobileTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button
+            class="nav-link active"
+            id="tab-fridge-tab"
+            data-bs-toggle="tab"
+            data-bs-target="#tab-fridge"
+            type="button"
+            role="tab"
+          >
+            냉장고
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button
+            class="nav-link"
+            id="tab-panels-tab"
+            data-bs-toggle="tab"
+            data-bs-target="#tab-panels"
+            type="button"
+            role="tab"
+          >
+            추천·AI
+          </button>
+        </li>
+      </ul>
+      <div
+        class="bg-body rounded-3 bg-opacity-75 p-4 p-md-5 shadow-lg tab-content d-lg-none"
+      >
+        <!-- ✅ 모바일 전용 탭 네비 (lg 미만에서만 보임) -->
+        <!-- 탭1: 냉장고 (⚠️ 여기서는 Masonry 바인딩 제거) -->
+        <div
+          class="tab-pane fade show active"
+          id="tab-fridge"
+          role="tabpanel"
+          aria-labelledby="tab-fridge-tab"
+        >
           <div class="title">냉장고</div>
-          <div class="ingredient-grid" bind:this={masonryContainer}>
+          <div
+            class="ingredient-grid three-up-mobile"
+            bind:this={masonryMobileEl}
+          >
+            <div class="grid-sizer"></div>
+            <!-- ✅ Masonry 기준 열폭 -->
             {#each ingredients as ing}
               <div class="grid-item bg-white rounded-3">
                 <div class="ingredient-card">
@@ -1103,7 +1719,14 @@
             </button>
           </div>
         </div>
-        <div class="col">
+
+        <!-- 탭2: 추천/AI -->
+        <div
+          class="tab-pane fade"
+          id="tab-panels"
+          role="tabpanel"
+          aria-labelledby="tab-panels-tab"
+        >
           <div class="recommend-header">
             <span class="recommend-title">재료&레시피 추천</span>
             <select class="gpt-select">
@@ -1119,27 +1742,27 @@
               <input
                 type="radio"
                 class="btn-check"
-                name="ai-type"
-                id="ai-current"
+                name="ai-type-mobile"
+                id="ai-current-mobile"
                 autocomplete="off"
                 checked
                 bind:group={aiRecommendationType}
-                value={"current"}
+                value="current"
               />
-              <label class="btn btn-outline-primary" for="ai-current"
+              <label class="btn btn-outline-primary" for="ai-current-mobile"
                 >보유 재료 기반</label
               >
 
               <input
                 type="radio"
                 class="btn-check"
-                name="ai-type"
-                id="ai-desired"
+                name="ai-type-mobile"
+                id="ai-desired-mobile"
                 autocomplete="off"
                 bind:group={aiRecommendationType}
                 value={"desired"}
               />
-              <label class="btn btn-outline-primary" for="ai-desired"
+              <label class="btn btn-outline-primary" for="ai-desired-mobile"
                 >메뉴/키워드 기반</label
               >
             </div>
@@ -1182,8 +1805,47 @@
               <div class="ai-response-box mt-4">
                 {@html marked(aiResponse)}
               </div>
+              <div class="mt-4">
+                <button on:click={saveRecipe} class="btn btn-dark">
+                  레시피 저장
+                </button>
+              </div>
             {/if}
           </div>
+          <!-- 저장된 레시피 (가로 스크롤) -->
+          {#if savedRecipes.length > 0}
+            <section class="mt-4">
+              <h5 class="fw-bold mb-2">📂 저장된 레시피</h5>
+
+              <!-- ✅ 스크롤 박스를 독립시킨 래퍼 (min-width:0 중요) -->
+              <div class="saved-outer d-flex">
+                <div class="flex-grow-1 min-w-0">
+                  <!-- ← 이게 없으면 옆 블럭까지 밀립니다 -->
+                  <!-- ✅ 여기만 가로 스크롤 -->
+                  <div class="saved-hscroll" role="list">
+                    {#each savedRecipes as saved, i}
+                      <article class="card saved-card" role="listitem">
+                        <div class="saved-card-inner">
+                          <h6 class="mb-2 saved-title">
+                            {extractTitle(saved.recipe)}
+                          </h6>
+                          <p class="text-muted small mb-2 saved-subtitle">
+                            키워드: {saved.keywords.join(", ")}
+                          </p>
+                          <button
+                            class="btn btn-sm btn-primary saved-btn"
+                            on:click={() => openSaved(i)}
+                          >
+                            상세보기
+                          </button>
+                        </div>
+                      </article>
+                    {/each}
+                  </div>
+                </div>
+              </div>
+            </section>
+          {/if}
           <div class="recipe-list">
             {#if isLoadingRecipes}
               <div class="d-flex justify-content-center p-5">
@@ -1264,7 +1926,8 @@
           </div>
         </div>
       </div>
-    </div>
+      <!-- 모바일 전용 UI 렌더 -->
+    {/if}
   </div>
 </main>
 
@@ -1349,26 +2012,44 @@
     margin-bottom: 16px;
     text-align: center;
   }
-
+  /* ✅ 기본: 3열 */
+  .grid-sizer,
   .grid-item {
-    width: calc(
-      33.3333% - 10.66px
-    ); /* 3열 기준: 16px(gutter) * 2 / 3 의 값을 빼줍니다. */
+    width: calc(33.3333% - 10.66px); /* 16px gutter 대응 */
+  }
+
+  /* ✅ 2열 구간 (1200px 이하) */
+  @media (max-width: 1200px) {
+    .grid-sizer,
+    .grid-item {
+      width: calc(50% - 10.66px);
+    }
+  }
+
+  /* ✅ 1열 구간 (767px 이하) */
+  @media (max-width: 767px) {
+    .grid-sizer,
+    .grid-item {
+      width: calc(100% - 10.66px);
+    }
+  }
+
+  /* --- 모바일 탭에서 2열 고정 --- */
+  .ingredient-grid.three-up-mobile .grid-sizer,
+  .ingredient-grid.three-up-mobile .grid-item {
+    width: calc(50% - 10.66px) !important; /* Masonry column 기준 */
+    float: left; /* Masonry와 함께 안전 */
+  }
+
+  /* 기존 스타일 유지 */
+  .grid-item {
     padding: 0;
     margin-bottom: 16px;
+    float: left; /* ✅ 추가 */
   }
-
-  /* 반응형 예시 */
-  @media (max-width: 1200px) {
-    .grid-item {
-      width: calc(50% - 10.66px); /* 화면이 줄어들면 2열 */
-    }
-  }
-  @media (max-width: 767px) {
-    .grid-item {
-      width: calc(100% - 10.66px); /* 화면이 더 줄어들면 1열 */
-    }
-  }
+  .ingredient-grid {
+    position: relative;
+  } /* Masonry 기준점(안전) */
 
   .ingredient-card {
     break-inside: avoid;
@@ -1497,4 +2178,103 @@
     font-weight: 500;
   }
   /* --- ★★★ 레시피 카드 관련 스타일 끝 ★★★ --- */
+
+  /* 부모가 flex/grid일 때 가로 오버플로우가 레이아웃을 밀지 않도록 */
+  .min-w-0 {
+    min-width: 0 !important;
+  }
+
+  /* 1) 데스크톱 좌/우 컬럼이 자식의 min-content 폭에 밀리지 않도록 */
+  .desktop-split .col.left,
+  .desktop-split .col.right {
+    min-width: 0;
+  }
+
+  /* 2) 스크롤 박스의 바깥 래퍼: 자신의 박스는 넘치지 않도록 */
+  /* 스크롤 박스의 바깥 래퍼: 자기 박스는 넘치지 않게, 레이아웃 격리 조금 더 강하게 */
+  /* ② 저장영역: 고유폭 전파 차단 + 컨테이너 폭 100% 고정 */
+  .saved-outer {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden; /* 부모를 밀지 못하게 */
+    contain: inline-size; /* ✅ 핵심: 자식의 가로 고유폭이 밖으로 새지 않음 */
+    isolation: isolate; /* 레이어 격리(미세하지만 안전) */
+  }
+  /* 3) 가로 스크롤 박스: grid → flex로 변경 (nowrap) */
+  /* ③ 실제 가로 스크롤 영역 */
+  .saved-hscroll {
+    display: flex;
+    flex-flow: row nowrap; /* 한 줄 고정 */
+    gap: 0.75rem;
+
+    width: 100%;
+    max-width: 100%;
+    min-width: 0; /* 수축 허용 */
+    overflow-x: auto;
+    overflow-y: hidden;
+
+    padding-bottom: 0.5rem;
+    margin-bottom: -0.5rem;
+
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-inline: contain;
+  }
+
+  /* ④ 카드 폭을 ‘정확히’ 고정 (내부 텍스트가 길어도 컨테이너 못 넓힘) */
+  .saved-card {
+    flex: 0 0 11rem; /* ✅ 고정 칸 */
+    max-width: 11rem;
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
+    scroll-snap-align: start;
+  }
+
+  /* 카드 내부 레이아웃: 상/중/하 */
+  /* 카드 내부 텍스트가 줄바꿈으로 높이를 밀어내지 않도록 추가 안전장치 */
+  .saved-card-inner {
+    /* 텍스트 과확장 방지 보강 */
+    position: absolute;
+    inset: 0;
+    padding: 0.5rem 0.6rem;
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    min-height: 0;
+  }
+  /* 말줄임 처리 */
+  .saved-title {
+    font-weight: 700;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin: 0;
+  }
+  .saved-subtitle {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin: 0;
+  }
+  .saved-title,
+  .saved-subtitle {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    word-break: break-word;
+  }
+  .saved-btn {
+    align-self: end;
+  }
+
+  .saved-title,
+  .saved-subtitle,
+  .saved-card-inner {
+    word-break: break-word; /* 긴 단어 줄바꿈 */
+  }
+
+  /* (선택) 스크롤바 높이 살짝 키우기 */
+  .saved-hscroll::-webkit-scrollbar {
+    height: 8px;
+  }
 </style>
