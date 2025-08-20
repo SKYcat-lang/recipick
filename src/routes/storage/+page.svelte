@@ -1297,8 +1297,8 @@
           <div class="col right">
             <div class="recommend-header">
               <span class="recommend-title">재료&레시피 추천</span>
-              <select class="gpt-select">
-                <option>GPT-4</option>
+              <select class="gemini-25-flash-select">
+                <option>Gemini 2.5 Flash</option>
               </select>
             </div>
             <div class="ai-box rounded-2 p-4">
@@ -1729,8 +1729,8 @@
         >
           <div class="recommend-header">
             <span class="recommend-title">재료&레시피 추천</span>
-            <select class="gpt-select">
-              <option>GPT-4</option>
+            <select class="gemini-25-flash-select">
+              <option>Gemini 2.5 Flash</option>
             </select>
           </div>
           <div class="ai-box rounded-2 p-4">
@@ -2080,6 +2080,13 @@
     font-weight: bold;
   }
   .gpt-select {
+    background: #eee;
+    border: none;
+    border-radius: 8px;
+    padding: 4px 12px;
+    font-size: 1rem;
+  }
+  .gemini-25-flash-select {
     background: #eee;
     border: none;
     border-radius: 8px;
