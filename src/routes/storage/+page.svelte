@@ -30,7 +30,30 @@
   let aiResponse = "";
   let isWaitingForAI = false;
 
-  // 레시피 저장?
+  // 레시피
+  const allowedKeywords = [
+    "디저트",
+    "샐러드",
+    "고기",
+    "해산물",
+    "국/탕",
+    "면요리",
+    "채식",
+    "한식",
+    "양식",
+    "중식",
+    "일식",
+    "동남아",
+    "퓨전",
+  ] as const;
+  type Keyword = (typeof allowedKeywords)[number];
+  type AiRecipeJSON = {
+    이름: string;
+    재료: { 보유재료: string[]; 추가추천재료?: string[] };
+    레시피: string[];
+    키워드: Keyword[]; // 1~3개
+  };
+  let aiJson: AiRecipeJSON | null = null;
   let savedRecipes: { recipe: string; keywords: string[] }[] = [];
 
   // ★★★ handleImageError 함수 아래에 AI 추천 요청 함수 추가 ★★★
@@ -38,104 +61,139 @@
     isWaitingForAI = true;
     aiResponse = "";
 
-    let prompt = "";
     const myIngredientsList = ingredients
       .map((ing) => ing.product.name.split("(")[0].trim())
       .join(", ");
 
-    if (aiRecommendationType === "current") {
-      prompt = `
-# 핵심 명령:
-반드시 응답 형식 규칙을 지켜주세요:
-1. 레시피 본문은 Markdown 형식으로 작성.
-2. 맨 마지막에 키워드 블록을 추가하세요.
-   - 형식: <key>키워드|키워드|...</key>
-   - 키워드 후보: [디저트 | 샐러드 | 고기 | 해산물 | 국/탕 | 면요리 | 채식 | 한식 | 양식 | 중식 | 일식 | 동남아 | 퓨전]
-   - 반드시 1~3개 선택.
-   - 구분자는 "|" (띄어쓰기 없음).
-   - 예시: <key>한식|채식|퓨전</key>
-3. '<key>','</key>' split 구문이 빠지면 응답은 무효가 됩니다. 반드시 포함하세요.
-4. 위 형식 이외의 불필요한 텍스트, 주석, 설명을 쓰지 말 것.
+    // 프롬프트 구성 (current/desired 공용 JSON 템플릿)
+    const basePrompt = (userLine: string) =>
+      `
+# 출력 규칙 (매우 중요)
+- 오직 JSON 하나만 반환하세요. 마크다운, 코드펜스, 설명, 주석 금지.
+- JSON의 최상위 키는 정확히 다음 4개만 허용됩니다: "이름", "재료", "레시피", "키워드".
+- 각 필드의 형식:
+  - "이름": string
+  - "재료": object
+      - "보유재료": string[]  // 반드시 ${myIngredientsList} 에서 파생
+      - "추가추천재료": string[] // 선택
+  - "레시피": string[] // 단계별 조리 설명
+  - "키워드": string[] // 아래 후보에서 1~3개 (정확 일치, 공백 없음)
+- "키워드" 후보: ["디저트","샐러드","고기","해산물","국/탕","면요리","채식","한식","양식","중식","일식","동남아","퓨전"]
+- 위 형식을 위반하거나 다른 텍스트를 포함하면 응답은 무효입니다.
 
-# 사용자 요청:
-현재 가지고 있는 재료는 ${myIngredientsList} 입니다.
-이 재료들을 활용해서 하나의 새로운 레시피를 창작해주세요.
+# 사용자 요청
+${userLine}
 
-# 형식 규칙:
-- 반드시 아래 형식을 지켜서 답변하세요:
-## 🍽️ 레시피 이름
+# 반환 예시:
+{
+  "이름": "예시 이름",
+  "재료": {
+    "보유재료": ["..."],
+    "추가추천재료": ["..."]
+  },
+  "레시피": ["1단계 ...", "2단계 ..."],
+  "키워드": ["한식","채식"]
+}
+`.trim();
 
-**📋 필요 재료**
-- 보유 재료: (현재 가진 재료 기반)
-- 추가 추천 재료: (있다면 제안)
+    const userLine =
+      aiRecommendationType === "current"
+        ? `현재 가지고 있는 재료는 ${myIngredientsList} 입니다. 이 재료들을 활용해 새로운 레시피를 창작해주세요.`
+        : `"${desiredMenuInput}" 컨셉의 레시피를 창작해주세요. 현재 가진 재료는 ${myIngredientsList} 입니다.`;
 
-**👨‍🍳 조리법**
-1. 단계별 상세 설명
-
-**✨ 꿀팁**
-- 요리 성공에 도움되는 팁
-
-<key>키워드 블록</key>
-  `;
-    } else {
-      prompt = `
-# 핵심 명령:
-반드시 응답 형식 규칙을 지켜주세요:
-1. 레시피 본문은 Markdown 형식으로 작성.
-2. 맨 마지막에 키워드 블록을 추가하세요.
-   - 형식: <key>키워드|키워드|...</key>
-   - 키워드 후보: [디저트 | 샐러드 | 고기 | 해산물 | 국/탕 | 면요리 | 채식 | 한식 | 양식 | 중식 | 일식 | 동남아 | 퓨전]
-   - 반드시 1~3개 선택.
-   - 구분자는 "|" (띄어쓰기 없음).
-   - 예시: <key>한식|채식|퓨전</key>
-3. '<key>','</key>' split 구문이 빠지면 응답은 무효가 됩니다. 반드시 포함하세요.
-4. 위 형식 이외의 불필요한 텍스트, 주석, 설명을 쓰지 말 것.
-
-# 사용자 요청:
-"${desiredMenuInput}" 컨셉의 레시피를 창작해주세요.
-현재 가진 재료는 ${myIngredientsList} 입니다. 이 재료들을 활용하면 더 좋아요.
-
-# 형식 규칙:
-- 반드시 아래 형식을 지켜서 답변하세요:
-## 🍽️ 레시피 이름
-
-**📋 필요 재료**
-- 보유 재료: (현재 가진 재료 기반)
-- 추가 추천 재료: (있다면 제안)
-
-**👨‍🍳 조리법**
-1. 단계별 상세 설명
-
-**✨ 꿀팁**
-- 요리 성공에 도움되는 팁
-
-<key>키워드 블록</key>
-  `;
-    }
+    const prompt = basePrompt(userLine);
 
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const result = await model.generateContent(prompt);
-      aiResponse = result.response.text();
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // ✅ 1.5-flash 사용
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json" }, // ✅ JSON 강제
+      });
+
+      const raw = result.response.text(); // (JSON 문자열 기대)
+      const data = parseAiJsonStrict(raw); // ✅ 엄격 파싱/검증
+      aiJson = data;
+      aiResponse = toMarkdown(data); // ✅ 사용자 표시용 마크다운 생성
     } catch (err) {
       console.error("Gemini API 오류:", err);
+      aiJson = null;
       aiResponse = "⚠️ AI 응답을 가져오는 중 문제가 발생했습니다.";
     } finally {
       isWaitingForAI = false;
     }
   }
+  // ✅ JSON 엄격 파서 (코드펜스/잡설 방어 + 스키마 검증)
+  function parseAiJsonStrict(text: string): AiRecipeJSON {
+    let payload = text.trim();
 
-  function parseAiResponse(resp: string) {
-    const keyMatch = resp.match(/<key>(.*?)<\/key>/);
-    const keywords = keyMatch ? keyMatch[1].split("|") : [];
-    const recipeText = resp.replace(/<key>.*<\/key>/, "").trim();
-    return { recipe: recipeText, keywords };
+    // ```json … ``` 방지
+    if (payload.startsWith("```")) {
+      payload = payload
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/```$/i, "")
+        .trim();
+    }
+    // 앞뒤 잡설 제거 (첫 { … 마지막 } 추출)
+    if (!(payload.startsWith("{") && payload.endsWith("}"))) {
+      const s = payload.indexOf("{");
+      const e = payload.lastIndexOf("}");
+      if (s !== -1 && e !== -1 && e > s) payload = payload.slice(s, e + 1);
+    }
+
+    const obj = JSON.parse(payload);
+
+    // 스키마 검증
+    for (const k of ["이름", "재료", "레시피", "키워드"]) {
+      if (!(k in obj)) throw new Error(`필드 누락: ${k}`);
+    }
+    if (!obj || typeof obj.이름 !== "string")
+      throw new Error("이름은 string이어야 합니다.");
+    if (!obj.재료 || !Array.isArray(obj.재료.보유재료))
+      throw new Error("재료.보유재료는 string[]이어야 합니다.");
+    if (obj.재료.추가추천재료 && !Array.isArray(obj.재료.추가추천재료))
+      throw new Error("재료.추가추천재료는 string[]이어야 합니다.");
+    if (!Array.isArray(obj.레시피))
+      throw new Error("레시피는 string[]이어야 합니다.");
+    if (!Array.isArray(obj.키워드))
+      throw new Error("키워드는 string[]이어야 합니다.");
+    if (obj.키워드.length < 1 || obj.키워드.length > 3)
+      throw new Error("키워드는 1~3개여야 합니다.");
+
+    const set = new Set(allowedKeywords);
+    for (const kw of obj.키워드) {
+      if (!set.has(kw)) throw new Error(`허용되지 않은 키워드: ${kw}`);
+    }
+
+    return obj as AiRecipeJSON;
   }
 
+  // ✅ 사용자 표시용 마크다운 조립
+  function toMarkdown(r: AiRecipeJSON) {
+    const own = (r.재료.보유재료 ?? []).join(", ");
+    const add = (r.재료.추가추천재료 ?? []).join(", ") || "-";
+    const steps = (r.레시피 ?? []).join("\n\n");
+    const kw = (r.키워드 ?? []).join(", ");
+
+    return `## ${r.이름}
+
+**필요 재료**
+- 보유 재료: ${own}
+- 추가 추천 재료: ${add}
+
+**조리법**
+${steps}
+
+${kw}
+`.trim();
+  }
+
+  // ✅ 저장은 aiJson 기준으로
   function saveRecipe() {
-    if (!aiResponse.trim()) return;
-    const { recipe, keywords } = parseAiResponse(aiResponse);
-    savedRecipes = [...savedRecipes, { recipe, keywords }];
+    if (!aiJson) return;
+    savedRecipes = [
+      ...savedRecipes,
+      { recipe: toMarkdown(aiJson), keywords: aiJson.키워드 },
+    ];
     alert("레시피가 저장되었습니다!");
   }
 
@@ -1382,8 +1440,8 @@
             </div>
             <!-- 저장된 레시피 (가로 스크롤) -->
             {#if savedRecipes.length > 0}
-              <section class="mt-4">
-                <h5 class="fw-bold mb-2">📂 저장된 레시피</h5>
+              <section class="mt-4 mb-4">
+                <h5 class="fw-bold mb-2">저장된 레시피</h5>
 
                 <!-- ✅ 스크롤 박스를 독립시킨 래퍼 (min-width:0 중요) -->
                 <div class="saved-outer d-flex">
@@ -1814,15 +1872,15 @@
           </div>
           <!-- 저장된 레시피 (가로 스크롤) -->
           {#if savedRecipes.length > 0}
-            <section class="mt-4">
-              <h5 class="fw-bold mb-2">📂 저장된 레시피</h5>
+            <section class="mt-4 mb-4">
+              <h5 class="fw-bold">저장된 레시피</h5>
 
               <!-- ✅ 스크롤 박스를 독립시킨 래퍼 (min-width:0 중요) -->
               <div class="saved-outer d-flex">
                 <div class="flex-grow-1 min-w-0">
                   <!-- ← 이게 없으면 옆 블럭까지 밀립니다 -->
                   <!-- ✅ 여기만 가로 스크롤 -->
-                  <div class="saved-hscroll" role="list">
+                  <div class="saved-hscroll mb-2" role="list">
                     {#each savedRecipes as saved, i}
                       <article class="card saved-card" role="listitem">
                         <div class="saved-card-inner">
