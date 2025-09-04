@@ -16,11 +16,25 @@
 
   onMount(async () => {
     // 슬롯(자식) DOM이 모두 렌더된 뒤 Masonry 초기화
-    await tick();
-    handle = await initMasonry(host);
-    // 초기 렌더 직후에도 한 번 강제 레이아웃 (이미지 없는 카드 대비)
-    await tick();
-    handle?.update();
+    // 하이드레이션 타이밍 보호: host가 bind 되지 않은 경우가 있어 약간 대기
+    let tries = 0;
+    while ((!host || !(host as any).isConnected) && tries < 5) {
+      await tick();
+      await new Promise((r) => setTimeout(r, 0));
+      tries++;
+    }
+    if (!host) {
+      console.warn("FridgeGrid: host not ready, skip Masonry init");
+      return;
+    }
+    try {
+      handle = await initMasonry(host);
+      // 초기 렌더 직후에도 한 번 강제 레이아웃 (이미지 없는 카드 대비)
+      await tick();
+      handle?.update();
+    } catch (e) {
+      console.warn("FridgeGrid: Masonry init failed", e);
+    }
   });
 
   onDestroy(() => handle?.destroy());

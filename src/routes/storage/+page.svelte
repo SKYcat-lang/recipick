@@ -17,34 +17,114 @@
   } from "$lib/stores/inventory";
   import { isDesktop, isLoadingRecipes, recipeError } from "$lib/stores/ui";
   import { findProductInfo } from "$lib/data/products";
-  import { fetchRecipeMatches, demoProcess } from "$lib/services/foodsafety";
+  import { fetchRecipeMatches } from "$lib/services/foodsafety";
   import type { MatchedRecipe } from "$lib/types/recipe";
 
-  const USE_DEMO = true; // 필요 시 false로
   const API_KEY = import.meta.env.VITE_FSK_API_KEY;
+  const CACHE_VER = "v2";
 
   let recipes: MatchedRecipe[] = [];
+  let lastRecipesCache: MatchedRecipe[] = [];
   let lastSig = "";
+  let tried = false; // 첫 로드 완료 여부(빈 문구 깜빡임/비일관성 방지)
+  let bootReady = false; // onMount 초기 세팅(재료 주입) 완료 후에만 호출
   // Masonry 재배치 호출을 위한 컴포넌트 참조
   let desktopGridRef: any;
   let mobileGridRef: any;
 
+
   async function loadRecipes() {
     isLoadingRecipes.set(true);
     recipeError.set(null);
-    try {
-      const myNames = $ingredients.map((i: InventoryItem) =>
-        i.product.name.split("(")[0].trim()
-      );
-      recipes = USE_DEMO
-        ? demoProcess(myNames)
-        : await fetchRecipeMatches({ apiKey: API_KEY, myNames });
-    } catch (e: any) {
-      recipeError.set(e?.message || "레시피를 불러오지 못했습니다");
-      recipes = [];
-    } finally {
+    tried = false;
+
+    // 초기 부트 완료 전에는 호출하지 않음(재료가 없는 상태로 호출되는 레이스 방지)
+    if (!bootReady) {
       isLoadingRecipes.set(false);
+      return;
     }
+
+    // 식약처 OPEN-API 키 미설정 시 안내 후 종료
+    if (!API_KEY || API_KEY === "YOUR_API_KEY") {
+      recipeError.set("식약처 OPEN-API 키(VITE_FSK_API_KEY)가 설정되지 않았습니다. .env에 설정 후 다시 시도하세요.");
+      recipes = [];
+      isLoadingRecipes.set(false);
+      tried = true;
+      return;
+    }
+
+    // 재료가 비어 있으면 호출하지 않음(초기 마운트 시 '보유 없음' 목록 노출 방지)
+    const cur = $ingredients ?? [];
+    if (!cur.length) {
+      // 재료가 아직 준비되지 않은 타이밍이면 기존 목록/상태를 유지하고 반환
+      isLoadingRecipes.set(false);
+      return;
+    }
+
+    const myNames = cur.map((i: InventoryItem) =>
+      i.product.name.split("(")[0].trim()
+    );
+
+    // 캐시 키 (구성 서명 기반)
+    const sigLocal = $inventorySignature || "";
+    const cacheKey = `recipesCache:${CACHE_VER}:${sigLocal}`;
+
+    // 캐시 선반영(SWR) — 화면 깜빡임 최소화
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const list = parsed?.recipes ?? [];
+        const ok =
+          Array.isArray(list) &&
+          list.some((r: any) => Array.isArray(r?.have) && r.have.length > 0);
+        if (ok) {
+          recipes = list;
+          tried = true;
+        }
+      }
+    } catch {}
+
+    // 일시적 오류 대비: 1회 재시도 + 캐시 폴백
+    let attempt = 0;
+    let success = false;
+    let lastErr: any = null;
+
+    while (attempt < 2 && !success) {
+      try {
+        const res = await fetchRecipeMatches({ apiKey: API_KEY, myNames });
+        recipes = res;
+        lastRecipesCache = res;
+        recipeError.set(null);
+        success = true;
+        tried = true;
+        // 최신 결과 캐시 저장
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify({ time: Date.now(), recipes: res }));
+        } catch {}
+      } catch (e: any) {
+        lastErr = e;
+        attempt += 1;
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 300));
+        }
+      }
+    }
+
+    if (!success) {
+      if (lastRecipesCache.length > 0) {
+        // 네트워크/API 일시 오류 시 이전 성공 결과로 폴백해 일관성 유지
+        recipes = lastRecipesCache;
+        recipeError.set(null);
+        tried = true;
+      } else {
+        recipeError.set(lastErr?.message || "레시피를 불러오지 못했습니다");
+        recipes = [];
+        tried = true;
+      }
+    }
+
+    isLoadingRecipes.set(false);
   }
 
   onMount(() => {
@@ -98,10 +178,22 @@
         mobileGridRef?.relayout?.();
       });
     });
+
+    // 초기 재료 준비 완료 감지 후 부트 플래그 설정과 첫 로드 트리거
+    let unsub: () => void;
+    unsub = ingredients.subscribe(($ings) => {
+      if (!bootReady && $ings && $ings.length > 0) {
+        bootReady = true;
+        lastSig = $inventorySignature || "";
+        loadRecipes();
+        // subscribe 콜백은 동기 호출되므로, 반환된 unsubscribe가 초기화된 이후에 실행되도록 지연
+        Promise.resolve().then(() => unsub && unsub());
+      }
+    });
   });
 
-  // 재고 구성 변할 때만 API 호출
-  $: if ($inventorySignature && $inventorySignature !== lastSig) {
+  // 재고 구성 변할 때만 API 호출 (초기 세팅 완료 후에만)
+  $: if (bootReady && $inventorySignature && $inventorySignature !== lastSig) {
     lastSig = $inventorySignature;
     loadRecipes();
   }
@@ -135,9 +227,10 @@
             <AiRecipePanel />
             <SavedRecipesCarousel />
             <RecipeList
-              {recipes}
+              recipes={recipes}
               loading={$isLoadingRecipes}
               error={$recipeError}
+              tried={tried}
             />
           </div>
         </div>
@@ -198,9 +291,10 @@
           <AiRecipePanel />
           <SavedRecipesCarousel />
           <RecipeList
-            {recipes}
+            recipes={recipes}
             loading={$isLoadingRecipes}
             error={$recipeError}
+            tried={tried}
           />
         </div>
       </div>

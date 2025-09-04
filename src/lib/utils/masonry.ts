@@ -9,8 +9,24 @@ export type MasonryHandle = {
 };
 
 export async function initMasonry(
-  targetEl: HTMLElement
+  targetEl: HTMLElement | null
 ): Promise<MasonryHandle> {
+  // 안전 가드: DOM 바인딩 타이밍 문제로 null이 전달될 수 있음
+  if (!targetEl) {
+    console.warn("Bad element for masonry: null");
+    const dummyRO = new ResizeObserver(() => {});
+    return {
+      msnry: null,
+      ro: dummyRO,
+      update: () => {},
+      destroy() {
+        try {
+          dummyRO.disconnect();
+        } catch {}
+      }
+    };
+  }
+
   const MasonryModule = await import("masonry-layout");
   const Masonry = MasonryModule.default;
 
