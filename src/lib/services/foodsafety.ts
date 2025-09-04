@@ -58,21 +58,29 @@ export async function fetchRecipeMatches({
     const ingredientsText =
       row.querySelector("RCP_PARTS_DTLS")?.textContent || "";
 
-    // 재료 텍스트 파싱: 구분자 기준으로 "풀네임" 단위로 분리하고, 소괄호만 제거하여 표시
-    const rawParts = ingredientsText
+    // 재료 텍스트 파싱: 소괄호 내용은 먼저 전역 제거하고, 이후 구분자로 분리
+    const cleaned = ingredientsText
       .replace(/\[.*?\]/g, " ")       // 대괄호 라벨 제거
       .replace(/●.*?:/g, " ")         // 블릿 라벨 제거
-      .split(/,|\/|;|\n|·|\u00b7/g);  // 주요 구분자로 분리
+      .replace(/\(.*?\)/g, " ");      // 소괄호 내부 통째로 제거
 
-    // 풀네임 표시용: 소괄호만 제거하고 공백 정리
+    const rawParts = cleaned.split(/,|\/|;|\n|·|\u00b7/g); // 주요 구분자로 분리
+  
+    // 풀네임 표시용:
+    // - 공백 및 주변 구분 부호 정리
+    // - "수량만 남은 토큰(숫자/분수 + 선택 단위)" 제거: (1/2개), 200g, 1컵 등
     const displayParts = rawParts
       .map((part) =>
         part
-          .replace(/\(.*?\)/g, " ")   // 소괄호 내부만 제거
           .replace(/\s+/g, " ")
+          .replace(/^[\s\-–·.,/]+|[\s\-–·.,/]+$/g, "")
           .trim()
       )
-      .filter((p) => p.length >= 1);
+      .filter(
+        (p) =>
+          p.length >= 1 &&
+          !/^\d+(?:\/\d+)?(?:\.\d+)?\s*(?:개|g|kg|mg|ml|l|컵|큰술|작은술|스푼|tsp|tbsp)?$/i.test(p)
+      );
 
     // 매칭용 정규화 키
     const normParts = displayParts.map((p) => normalize(p));
