@@ -472,6 +472,33 @@ ${kw}
   }
   // --- ★★★ XML 연동 로직 끝 ★★★ ---
 
+  // 🔒 재고 '구성'이 변할 때만 레시피 갱신 (메모/메모모드/이미지 변경은 무시)
+  let _lastInvSig = "";
+  function inventorySignature() {
+    // 제품 ID + 수량 타입/값까지만 반영 (원하면 값도 빼면 더 보수적)
+    return ingredients
+      .map((i) => {
+        const pid = i.product.productId;
+        const a = i.amount;
+        // 필요에 따라 수량값까지 반영하거나(type만 쓰면 추가/삭제/종류변경만 감지)
+        if (a?.type === "count") return `${pid}:count:${a.value}`;
+        if (a?.type === "exact")
+          return `${pid}:exact:${a.value}${a.unit || ""}`;
+        if (a?.type === "step") return `${pid}:step:${a.level}`;
+        return `${pid}:none`;
+      })
+      .sort() // 순서 영향 제거
+      .join("|");
+  }
+
+  $: {
+    const sig = inventorySignature();
+    if (sig && sig !== _lastInvSig) {
+      _lastInvSig = sig;
+      fetchRecipes(); // ✅ 진짜 재고 구성이 바뀐 경우에만 호출
+    }
+  }
+
   // ★★★ 이미지 에러 처리를 위한 함수 ★★★
   function handleImageError(event: Event) {
     const target = event.target as HTMLImageElement;
@@ -561,6 +588,7 @@ ${kw}
       if (el2) await initMasonry(el2);
     };
     mql.addEventListener?.("change", handler);
+    fetchRecipes(); // ✅ 진짜 재고 구성이 바뀐 경우에만 호출
     // ✅ 컴포넌트 destroy 시 자동 호출
     return () => {
       mql.removeEventListener?.("change", handler);
@@ -650,12 +678,6 @@ ${kw}
     // 아이템 크기 변동(메모 편집, 이미지 늦게 변환 등)에 대응
     ro = new ResizeObserver(() => debouncedLayout());
     targetEl.querySelectorAll(".grid-item").forEach((el) => ro!.observe(el));
-  }
-
-  // ★★★★★ 3. 반응형 로직 통합 및 개선 ★★★★★
-  $: if (ingredients && ingredients.length > 0) {
-    // ingredients 배열이 존재하고, 비어있지 않을 때만 레시피를 불러옵니다.
-    fetchRecipes();
   }
 
   $: if (ingredients && ingredients.length > 0 && masonryInstance) {
