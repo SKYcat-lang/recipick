@@ -131,51 +131,25 @@ export async function fetchRecipeMatches({
     return { name, seq, image, have, missing, unique: uniqueDisplay, looseMatches, looseScore };
   });
 
-  // 2) 우선순위 배열 구성(상위 제한 없음, 무한 확장 용)
-  //    - 1순위: 보유 재료 기반 엄격 매칭(많이 갖고/덜 부족한 순)
-  //    - 2순위: 보유 재료는 없지만 느슨 매칭 있는 항목(느슨 점수 높고, 재료 수 적은 순)
-  //    - 3순위: 나머지
-  const strict = allItems
-    .filter((r) => r.have.length > 0)
-    .sort(
-      (a, b) =>
-        a.missing.length - b.missing.length || b.have.length - a.have.length
-    );
-
-  const looseOnly = allItems
-    .filter((r) => r.have.length === 0 && r.looseScore > 0)
-    .sort(
-      (a, b) =>
-        b.looseScore - a.looseScore || a.unique.length - b.unique.length
-    );
-
-  const rest = allItems.filter(
-    (r) => r.have.length === 0 && r.looseScore === 0
+  // 2) 정렬: 보유 재료 많은 순(내림차순) → 부족 재료 적은 순 → 느슨 점수 높은 순 → 재료 수 적은 순
+  const ordered = [...allItems].sort(
+    (a, b) =>
+      b.have.length - a.have.length ||
+      a.missing.length - b.missing.length ||
+      b.looseScore - a.looseScore ||
+      a.unique.length - b.unique.length
   );
-
-  // '+ 보유 없음' 항목(rest)은 제외한다 → 사용자가 가진 재료와의 관련성이 없는 카드 제거
-  // 일관성: 새로고침 시에도 항상 '보유(엄격/느슨)' 매칭이 있는 카드만 노출
-  const base = [...strict, ...looseOnly];
-
-  const ordered = base.length > 0 ? base : allItems;
   if (ordered.length === 0) {
     throw new Error("레시피 계산 결과가 비어 있습니다");
   }
   const result = ordered.map((item, index) => {
-    // have가 비어 있고 느슨 매칭이 있다면 표시용 have를 느슨 매칭으로 대체
-    const displayHave = item.have.length > 0 ? item.have : item.looseMatches;
-    // missing은 unique - displayHave (기본적인 참고용)
-    const displayMissing = item.unique.filter(
-      (ri) => !displayHave.includes(ri)
-    );
-
     return {
       seq: item.seq,
       name: item.name,
       link: `${item.seq}`,
       image: item.image,
-      have: displayHave,
-      missing: displayMissing,
+      have: item.have,
+      missing: item.missing,
       color: ["#ffb6c1", "#d2b48c", "#add8e6", "#90ee90", "#dda0dd"][index % 5],
     };
   }) as MatchedRecipe[];

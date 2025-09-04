@@ -8,9 +8,8 @@
   export let pageSize = 10;
   let visible = 0;
 
-  // 표시 리스트: 항상 '보유 > 0'인 카드만 노출(보유 없음 카드는 제외)
-  $: base = recipes ?? [];
-  $: list = base.filter((r) => (r?.have?.length ?? 0) > 0);
+  // 표시 리스트: 전체 사용(보유 없음도 표시)
+  $: list = recipes ?? [];
 
   // 레시피 변경 시 첫 페이지로 리셋 + 안전한 보정
   let lastSig = "";
@@ -54,26 +53,28 @@
           <div class="col-8 d-flex flex-column">
             <div class="card-body">
               <h5 class="card-title mb-2">{recipe.name}</h5>
-              {#if recipe.have.length > 0}
-                <div class="ingredient-status small">
-                  <div class="text-success">
-                    <strong class="me-2">+ 보유</strong>
+              <div class="ingredient-status small">
+                <div class="text-success">
+                  <strong class="me-2">+ 보유</strong>
+                  {#if recipe.have.length > 0}
                     {#each recipe.have as ing}
                       <span class="badge bg-success-subtle text-success-emphasis rounded-pill">{ing}</span>
                     {/each}
-                  </div>
-                  <div class="text-warning-emphasis mt-1">
-                    <strong class="me-2">+ 필요</strong>
-                    {#if recipe.missing.length > 0}
-                      {#each recipe.missing as ing}
-                        <span class="badge bg-warning-subtle text-warning-emphasis rounded-pill">{ing}</span>
-                      {/each}
-                    {:else}
-                      <span class="badge bg-info-subtle text-info-emphasis rounded-pill">모든 재료 보유!</span>
-                    {/if}
-                  </div>
+                  {:else}
+                    <span class="text-muted">없음</span>
+                  {/if}
                 </div>
-              {/if}
+                <div class="text-warning-emphasis mt-1">
+                  <strong class="me-2">+ 필요</strong>
+                  {#if recipe.missing.length > 0}
+                    {#each recipe.missing as ing}
+                      <span class="badge bg-warning-subtle text-warning-emphasis rounded-pill">{ing}</span>
+                    {/each}
+                  {:else}
+                    <span class="badge bg-info-subtle text-info-emphasis rounded-pill">모든 재료 보유!</span>
+                  {/if}
+                </div>
+              </div>
             </div>
             <div class="card-footer bg-transparent border-0 mt-auto text-end pb-2 pe-2">
               <a href={`/recipes/${recipe.seq}`} class="btn btn-primary btn-sm">레시피 보기</a>
