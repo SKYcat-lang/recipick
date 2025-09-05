@@ -50,8 +50,15 @@
   .saved-outer {
     width: 100%;
     max-width: 100%;
-    overflow: hidden; /* 부모를 밀지 못하게 */
-    contain: inline-size; /* 자식의 가로 고유폭이 밖으로 새지 않음 */
+    overflow-x: auto;          /* 가로 스크롤은 여기에서 처리 */
+    overflow-y: hidden;
+    padding-bottom: 0.5rem;    /* 스크롤바가 카드와 겹치지 않게 여백 */
+    padding-inline-end: 0.75rem;   /* 맨 끝 카드가 잘리지 않도록 우측 여백 */
+    scroll-padding-inline: 0 0.75rem; /* 스냅/스크롤 시 우측 여백 고려 */
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-inline: contain;
+    scrollbar-gutter: stable both-edges;
     isolation: isolate;
   }
   .saved-hscroll {
@@ -59,18 +66,15 @@
     flex-flow: row nowrap;
     gap: 0.75rem;
 
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-
-    padding-bottom: 0.5rem;
-    margin-bottom: -0.5rem;
-
-    scroll-snap-type: x mandatory;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-inline: contain;
+    /* 내용이 필요만큼 가로로 확장되도록 */
+    inline-size: max-content;
+    min-inline-size: 100%;
+  }
+  /* 맨 끝 카드가 컨테이너 우측에 닿아 잘리는 현상 방지용 트레일 스페이서 */
+  .saved-hscroll::after {
+    content: "";
+    flex: 0 0 0.75rem; /* gap과 동일한 폭 */
+    pointer-events: none;
   }
   .saved-card {
     flex: 0 0 11rem;

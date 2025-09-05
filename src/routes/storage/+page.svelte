@@ -18,10 +18,13 @@
   import { isDesktop, isLoadingRecipes, recipeError } from "$lib/stores/ui";
   import { findProductInfo } from "$lib/data/products";
   import { fetchRecipeMatches } from "$lib/services/foodsafety";
+  import { fetchMealDbMatches } from "$lib/services/mealdb";
   import type { MatchedRecipe } from "$lib/types/recipe";
 
   const API_KEY = import.meta.env.VITE_FSK_API_KEY;
-  const CACHE_VER = "v2";
+  const CACHE_VER = "v4";
+  // MealDB 전용 캐시 버전 (MealDB 결과 캐시 무효화를 분리 관리)
+  const MEAL_CACHE_VER = "m2";
 
   let recipes: MatchedRecipe[] = [];
   let lastRecipesCache: MatchedRecipe[] = [];
@@ -32,6 +35,33 @@
   let desktopGridRef: any;
   let mobileGridRef: any;
 
+  // MealDB 별도 상태
+  let recipesMealDb: MatchedRecipe[] = [];
+  let mealLoading = false;
+  let mealError: string | null = null;
+  let mealTried = false;
+  let lastRecipesMealCache: MatchedRecipe[] = [];
+
+
+  // 내 재료명 + aliases를 모두 포함한 검색 키 생성
+  function deriveMyNames(cur: InventoryItem[]): string[] {
+    const out: string[] = [];
+    for (const it of cur) {
+      // 기본 이름에서 괄호 설명 제거
+      const base = (it?.product?.name || "").split("(")[0].trim();
+      if (base) out.push(base);
+      // aliases 포함
+      const aliases = (it?.product as any)?.aliases as string[] | undefined;
+      if (aliases && Array.isArray(aliases)) {
+        for (const al of aliases) {
+          const s = (al || "").split("(")[0].trim();
+          if (s) out.push(s);
+        }
+      }
+    }
+    // 중복 제거
+    return Array.from(new Set(out));
+  }
 
   async function loadRecipes() {
     isLoadingRecipes.set(true);
@@ -61,9 +91,7 @@
       return;
     }
 
-    const myNames = cur.map((i: InventoryItem) =>
-      i.product.name.split("(")[0].trim()
-    );
+    const myNames = deriveMyNames(cur);
 
     // 캐시 키 (구성 서명 기반)
     const sigLocal = $inventorySignature || "";
@@ -126,7 +154,55 @@
 
     isLoadingRecipes.set(false);
   }
+ 
+  // MealDB 로더
+  async function loadRecipesMealDb() {
+    mealLoading = true;
+    mealError = null;
+    mealTried = false;
 
+    if (!bootReady) {
+      mealLoading = false;
+      return;
+    }
+    const cur = $ingredients ?? [];
+    if (!cur.length) {
+      mealLoading = false;
+      return;
+    }
+    const myNames = deriveMyNames(cur);
+
+    const sigLocal = $inventorySignature || "";
+    const cacheKey = `recipesCacheMealDB:${MEAL_CACHE_VER}:${sigLocal}`;
+
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const list = parsed?.recipes ?? [];
+        if (Array.isArray(list) && list.length > 0) {
+          recipesMealDb = list;
+          mealTried = true;
+        }
+      }
+    } catch {}
+
+    try {
+      const res = await fetchMealDbMatches({ myNames, letter: "a", limit: 60 });
+      recipesMealDb = res;
+      mealError = null;
+      mealTried = true;
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify({ time: Date.now(), recipes: res }));
+      } catch {}
+    } catch (e:any) {
+      console.error(e);
+      mealError = e?.message || "MealDB 레시피를 불러오지 못했습니다";
+    } finally {
+      mealLoading = false;
+    }
+  }
+ 
   onMount(() => {
     // 데모용 초기 재료
     setIngredients([
@@ -186,6 +262,7 @@
         bootReady = true;
         lastSig = $inventorySignature || "";
         loadRecipes();
+        loadRecipesMealDb();
         // subscribe 콜백은 동기 호출되므로, 반환된 unsubscribe가 초기화된 이후에 실행되도록 지연
         Promise.resolve().then(() => unsub && unsub());
       }
@@ -196,6 +273,7 @@
   $: if (bootReady && $inventorySignature && $inventorySignature !== lastSig) {
     lastSig = $inventorySignature;
     loadRecipes();
+    loadRecipesMealDb();
   }
 </script>
 
@@ -226,11 +304,21 @@
             </div>
             <AiRecipePanel />
             <SavedRecipesCarousel />
+
+            <h6 class="mt-2 mb-2">식약처 추천</h6>
             <RecipeList
               recipes={recipes}
               loading={$isLoadingRecipes}
               error={$recipeError}
               tried={tried}
+            />
+
+            <h6 class="mt-3 mb-2">MealDB 추천</h6>
+            <RecipeList
+              recipes={recipesMealDb}
+              loading={mealLoading}
+              error={mealError}
+              tried={mealTried}
             />
           </div>
         </div>
@@ -290,11 +378,21 @@
           </div>
           <AiRecipePanel />
           <SavedRecipesCarousel />
+
+          <h6 class="mt-2 mb-2">식약처 추천</h6>
           <RecipeList
             recipes={recipes}
             loading={$isLoadingRecipes}
             error={$recipeError}
             tried={tried}
+          />
+
+          <h6 class="mt-3 mb-2">MealDB 추천</h6>
+          <RecipeList
+            recipes={recipesMealDb}
+            loading={mealLoading}
+            error={mealError}
+            tried={mealTried}
           />
         </div>
       </div>

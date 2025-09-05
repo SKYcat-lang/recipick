@@ -37,6 +37,9 @@ export interface ProductInfo {
   name: string;
   category: string;
   image?: string;
+
+  // 별칭/서브 이름들 (예: "파스타", "pasta", "spaghetti")
+  aliases?: string[];
   
   // 새로 추가된 속성
   source: 'barcode' | 'database' | 'api' | 'custom'; // 이 상품 정보가 어디서 왔는지

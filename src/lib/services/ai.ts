@@ -1,7 +1,14 @@
 import type { AiRecipeJSON } from "$lib/types/recipe";
 import { allowedKeywords } from "$lib/types/recipe";
 
-function buildPrompt(myIngredientsList: string, userLine: string) {
+function buildPrompt(myIngredientsList: string, userLine: string, modifiers?: string) {
+  const extra = (modifiers && modifiers.trim())
+    ? `
+
+# 선호/조건
+${modifiers.trim()}`
+    : "";
+
   return `# 출력 규칙 (매우 중요)
 - 오직 JSON 하나만 반환하세요. 마크다운, 코드펜스, 설명, 주석 금지.
 - JSON의 최상위 키는 정확히 다음 4개만 허용됩니다: "이름", "재료", "레시피", "키워드".
@@ -16,7 +23,7 @@ function buildPrompt(myIngredientsList: string, userLine: string) {
 - 위 형식을 위반하거나 다른 텍스트를 포함하면 응답은 무효입니다.
 
 # 사용자 요청
-${userLine}
+${userLine}${extra}
 
 # 반환 예시:
 {
@@ -35,18 +42,20 @@ export async function getAiRecipeJSON({
   ingredientsList,
   mode,
   desiredInput,
+  modifiers,
 }: {
   genAI: any;
   ingredientsList: string;
   mode: "current" | "desired";
   desiredInput?: string;
+  modifiers?: string;
 }): Promise<AiRecipeJSON> {
   const userLine =
     mode === "current"
       ? `현재 가지고 있는 재료는 ${ingredientsList} 입니다. 이 재료들을 활용해 새로운 레시피를 창작해주세요.`
       : `"${desiredInput}" 컨셉의 레시피를 창작해주세요. 현재 가진 재료는 ${ingredientsList} 입니다.`;
 
-  const prompt = buildPrompt(ingredientsList, userLine);
+  const prompt = buildPrompt(ingredientsList, userLine, modifiers);
 
   const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
   const result = await model.generateContent({

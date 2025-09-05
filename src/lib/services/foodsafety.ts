@@ -59,12 +59,14 @@ export async function fetchRecipeMatches({
       row.querySelector("RCP_PARTS_DTLS")?.textContent || "";
 
     // 재료 텍스트 파싱: 소괄호 내용은 먼저 전역 제거하고, 이후 구분자로 분리
+    // 개행(\n)은 토큰 내부 공백으로 간주하여 쪼개지 않도록 먼저 공백으로 변환
     const cleaned = ingredientsText
       .replace(/\[.*?\]/g, " ")       // 대괄호 라벨 제거
       .replace(/●.*?:/g, " ")         // 블릿 라벨 제거
       .replace(/\(.*?\)/g, " ");      // 소괄호 내부 통째로 제거
 
-    const rawParts = cleaned.split(/,|\/|;|\n|·|\u00b7/g); // 주요 구분자로 분리
+    const noNewline = cleaned.replace(/\r?\n+/g, " ");
+    const rawParts = noNewline.split(/,|\/|;|·|\u00b7/g); // 주요 구분자로 분리(개행 제외)
   
     // 풀네임 표시용:
     // - 공백 및 주변 구분 부호 정리
@@ -85,17 +87,31 @@ export async function fetchRecipeMatches({
     // 매칭용 정규화 키
     const normParts = displayParts.map((p) => normalize(p));
 
-    // 정규화 기준으로 유니크 집합 구성(첫 등장 우선)
-    const seen = new Set<string>();
+    // 정규화 기준으로 유니크 집합 구성(첫 등장 우선, 단 '표시용'은 공백 포함 표기를 선호)
+    const indexByNorm = new Map<string, number>();
     const uniqueDisplay: string[] = [];
     const uniqueNorm: string[] = [];
+
+    const preferDisplay = (cur: string, cand: string) => {
+      const hasSpaceCur = /\s/.test(cur);
+      const hasSpaceCand = /\s/.test(cand);
+      if (hasSpaceCur && !hasSpaceCand) return cur;
+      if (!hasSpaceCur && hasSpaceCand) return cand;
+      // 둘 다 공백 유무가 같다면 더 긴(정보량 많은) 것을 선택
+      return cand.length > cur.length ? cand : cur;
+    };
+
     for (let i = 0; i < normParts.length; i++) {
       const n = normParts[i];
       if (!n) continue;
-      if (!seen.has(n)) {
-        seen.add(n);
+      const d = displayParts[i];
+      if (!indexByNorm.has(n)) {
+        indexByNorm.set(n, uniqueNorm.length);
         uniqueNorm.push(n);
-        uniqueDisplay.push(displayParts[i]);
+        uniqueDisplay.push(d);
+      } else {
+        const idx = indexByNorm.get(n)!;
+        uniqueDisplay[idx] = preferDisplay(uniqueDisplay[idx], d);
       }
     }
 

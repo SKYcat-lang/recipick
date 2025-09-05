@@ -5,7 +5,9 @@
   export let error: string | null = null;
   export let tried = false; // 첫 로드 완료 전 빈상태 문구 깜빡임 방지
   // 내부 페이지네이션 (더보기)
-  export let pageSize = 10;
+  // 초기 표시 개수와 더보기 증가 단위를 분리
+  export let initial = 3; // 최초 3개
+  export let step = 6;    // 더보기 시 6개씩
   let visible = 0;
 
   // 표시 리스트: 전체 사용(보유 없음도 표시)
@@ -19,7 +21,7 @@
 
     // 데이터 변경 감지 시 첫 페이지로 리셋
     if (sig !== lastSig) {
-      visible = Math.min(pageSize, len);
+      visible = Math.min(initial, len);
       lastSig = sig;
     }
 
@@ -29,12 +31,20 @@
     } else if (visible > len) {
       visible = len;
     } else if (visible === 0) {
-      visible = Math.min(pageSize, len);
+      visible = Math.min(initial, len);
     }
   }
 
   function handleImageError(e: Event) {
     (e.target as HTMLImageElement).src = "https://via.placeholder.com/150/EEEEEE/AAAAAA?text=No+Image";
+  }
+
+  // 외부/내부 링크 판별 및 HREF 생성
+  function isExternal(link?: string) {
+    return !!(link && /^https?:\/\//i.test(link));
+  }
+  function hrefFor(recipe: MatchedRecipe) {
+    return isExternal(recipe.link) ? recipe.link : `/recipes/${recipe.seq}`;
   }
 </script>
 
@@ -77,7 +87,12 @@
               </div>
             </div>
             <div class="card-footer bg-transparent border-0 mt-auto text-end pb-2 pe-2">
-              <a href={`/recipes/${recipe.seq}`} class="btn btn-primary btn-sm">레시피 보기</a>
+              <a
+                href={hrefFor(recipe)}
+                class="btn btn-primary btn-sm"
+                target={isExternal(recipe.link) ? "_blank" : undefined}
+                rel={isExternal(recipe.link) ? "noopener noreferrer" : undefined}
+              >레시피 보기</a>
             </div>
           </div>
         </div>
@@ -87,7 +102,7 @@
       <div class="text-center my-2">
         <button
           class="btn btn-outline-secondary btn-sm"
-          on:click={() => (visible = Math.min((visible || pageSize) + pageSize, list.length))}
+          on:click={() => (visible = Math.min((visible || initial) + step, list.length))}
         >
           더보기
         </button>
@@ -152,10 +167,25 @@
     margin-bottom: 0.5rem;
   }
 
-  /* 보유/필요 배지는 최대 높이 제한 후 넘치면 감춤 */
+  /* 보유/필요: 두 섹션이 모두 1줄씩은 항상 보이도록 2행 그리드 구성 */
   .recipe-card .ingredient-status {
+    display: grid;
+    grid-template-rows: 1fr 1fr; /* 보유/필요 각각 1행 보장 */
+    row-gap: 4px;
     overflow: hidden;
-    max-height: 48px; /* 상황에 맞춰 조정 가능 (2줄 정도) */
+    max-height: 48px; /* 2줄 영역 고정 */
+  }
+  /* 각각의 줄은 1줄로 클램프하여 너무 긴 경우에도 다음 줄이 가려지지 않게 */
+  .recipe-card .ingredient-status > .text-success,
+  .recipe-card .ingredient-status > .text-warning-emphasis {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 1; /* 1줄 고정 */
+    -webkit-box-orient: vertical;
+  }
+  /* 상단 여백으로 인해 2행 레이아웃이 밀리지 않도록 조정 */
+  .recipe-card .ingredient-status > .text-warning-emphasis {
+    margin-top: 0 !important;
   }
 
   /* 버튼 푸터는 하단 고정 */
