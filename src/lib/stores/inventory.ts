@@ -20,6 +20,24 @@ export const inventorySignature = derived(ingredients, ($ings) =>
   makeSignature($ings)
 );
 
+function isItemExpired(it: InventoryItem): boolean {
+  const d = it.expirationDate as Date | undefined;
+  if (!d) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dl = new Date(d);
+  dl.setHours(0, 0, 0, 0);
+  return dl.getTime() < today.getTime();
+}
+
+export const availableIngredients = derived(ingredients, ($ings) =>
+  $ings.filter((i) => !isItemExpired(i))
+);
+
+export const availableInventorySignature = derived(availableIngredients, ($ings) =>
+  makeSignature($ings)
+);
+
 export function setIngredients(list: InventoryItem[]) {
   ingredients.set(list);
 }

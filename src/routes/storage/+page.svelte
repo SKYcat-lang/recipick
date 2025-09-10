@@ -42,7 +42,6 @@
   let mealTried = false;
   let lastRecipesMealCache: MatchedRecipe[] = [];
 
-
   // 내 재료명 + aliases를 모두 포함한 검색 키 생성
   function deriveMyNames(cur: InventoryItem[]): string[] {
     const out: string[] = [];
@@ -76,7 +75,9 @@
 
     // 식약처 OPEN-API 키 미설정 시 안내 후 종료
     if (!API_KEY || API_KEY === "YOUR_API_KEY") {
-      recipeError.set("식약처 OPEN-API 키(VITE_FSK_API_KEY)가 설정되지 않았습니다. .env에 설정 후 다시 시도하세요.");
+      recipeError.set(
+        "식약처 OPEN-API 키(VITE_FSK_API_KEY)가 설정되지 않았습니다. .env에 설정 후 다시 시도하세요."
+      );
       recipes = [];
       isLoadingRecipes.set(false);
       tried = true;
@@ -128,7 +129,10 @@
         tried = true;
         // 최신 결과 캐시 저장
         try {
-          localStorage.setItem(cacheKey, JSON.stringify({ time: Date.now(), recipes: res }));
+          localStorage.setItem(
+            cacheKey,
+            JSON.stringify({ time: Date.now(), recipes: res })
+          );
         } catch {}
       } catch (e: any) {
         lastErr = e;
@@ -154,7 +158,7 @@
 
     isLoadingRecipes.set(false);
   }
- 
+
   // MealDB 로더
   async function loadRecipesMealDb() {
     mealLoading = true;
@@ -193,16 +197,19 @@
       mealError = null;
       mealTried = true;
       try {
-        localStorage.setItem(cacheKey, JSON.stringify({ time: Date.now(), recipes: res }));
+        localStorage.setItem(
+          cacheKey,
+          JSON.stringify({ time: Date.now(), recipes: res })
+        );
       } catch {}
-    } catch (e:any) {
+    } catch (e: any) {
       console.error(e);
       mealError = e?.message || "MealDB 레시피를 불러오지 못했습니다";
     } finally {
       mealLoading = false;
     }
   }
- 
+
   onMount(() => {
     // 데모용 초기 재료
     setIngredients([
@@ -219,7 +226,7 @@
         { type: "step", level: "half" } as any,
         new Date("2025-06-20"),
         "오늘 저녁 메뉴!",
-        new Date("2025-06-23"),
+        new Date("2026-06-23"),
         "https://oasisprodproduct.edge.naverncp.com/101939/detail/0_c43f2071-7994-4b16-87fc-aae0712174bc.jpg"
       ),
       new InventoryItem(
@@ -246,7 +253,9 @@
     mql.addEventListener("change", apply);
 
     // 탭 전환 시 Masonry 재배치
-    const tabButtons = document.querySelectorAll<HTMLElement>('[data-bs-toggle="tab"]');
+    const tabButtons = document.querySelectorAll<HTMLElement>(
+      '[data-bs-toggle="tab"]'
+    );
     tabButtons.forEach((btn) => {
       btn.addEventListener("shown.bs.tab", async () => {
         await Promise.resolve();
@@ -280,8 +289,8 @@
 <Header />
 
 <main class="main">
-  <div class="container-lg py-5">
-    {#if $isDesktop}
+  {#if $isDesktop}
+    <div class="container-lg py-5">
       <div
         class="bg-body rounded-3 bg-opacity-75 p-4 p-md-5 shadow-lg d-none d-lg-block desktop-split w-100"
       >
@@ -307,10 +316,10 @@
 
             <h6 class="mt-2 mb-2">식약처 추천</h6>
             <RecipeList
-              recipes={recipes}
+              {recipes}
               loading={$isLoadingRecipes}
               error={$recipeError}
-              tried={tried}
+              {tried}
             />
 
             <h6 class="mt-3 mb-2">MealDB 추천</h6>
@@ -323,12 +332,14 @@
           </div>
         </div>
       </div>
-    {:else}
+    </div>
+  {:else}
+    <div class="container-lg py-3">
       <!-- 모바일 탭은 필요 시 동일 컴포넌트로 구성 -->
       <ul class="nav nav-tabs mb-3" id="mobileTabs" role="tablist">
-        <li class="nav-item" role="presentation">
+        <li class="nav-item bg-black bg-opacity-10 rounded-top-3" role="presentation">
           <button
-            class="nav-link active"
+            class="nav-link link-dark active"
             id="tab-fridge-tab"
             data-bs-toggle="tab"
             data-bs-target="#tab-fridge"
@@ -336,9 +347,9 @@
             role="tab">냉장고</button
           >
         </li>
-        <li class="nav-item" role="presentation">
+        <li class="nav-item bg-black bg-opacity-10 rounded-top-3" role="presentation">
           <button
-            class="nav-link"
+            class="nav-link link-dark"
             id="tab-panels-tab"
             data-bs-toggle="tab"
             data-bs-target="#tab-panels"
@@ -357,7 +368,11 @@
           aria-labelledby="tab-fridge-tab"
         >
           <div class="title">냉장고</div>
-          <FridgeGrid items={$ingredients} mobileTwoCols={true} bind:this={mobileGridRef}>
+          <FridgeGrid
+            items={$ingredients}
+            mobileTwoCols={true}
+            bind:this={mobileGridRef}
+          >
             {#each $ingredients as ing, i}
               <IngredientCard {ing} index={i} />
             {/each}
@@ -381,10 +396,10 @@
 
           <h6 class="mt-2 mb-2">식약처 추천</h6>
           <RecipeList
-            recipes={recipes}
+            {recipes}
             loading={$isLoadingRecipes}
             error={$recipeError}
-            tried={tried}
+            {tried}
           />
 
           <h6 class="mt-3 mb-2">MealDB 추천</h6>
@@ -396,8 +411,8 @@
           />
         </div>
       </div>
-    {/if}
-  </div>
+    </div>
+  {/if}
 </main>
 
 <Footer />
