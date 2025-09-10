@@ -7,3 +7,4 @@ declare module "masonry-layout" {
   const Masonry: any;
   export default Masonry;
 }
+declare module "bootstrap/dist/js/bootstrap.bundle";

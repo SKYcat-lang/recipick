@@ -3,7 +3,8 @@
   import type { ProductInfo } from "$lib/data/products";
   import {
     SYSTEM_PRODUCTS,
-    USER_CUSTOM_PRODUCTS,
+    userCustomProducts,
+    addUserCustomProduct,
     findProductInfo,
   } from "$lib/data/products";
   import { addItem } from "$lib/stores/inventory";
@@ -31,6 +32,43 @@
     selectedImage: "",
   };
   let formState = { ...defaultFormState };
+
+  // 2차 모달 요소/인스턴스
+  let customModalEl: HTMLElement;
+  let customModal: any;
+
+  // 2차 모달 폼 상태
+  const customDefaultForm = {
+    name: "",
+    category: "",
+    image: "",
+    aliasesText: "",
+  };
+  let customForm = { ...customDefaultForm };
+
+  function handleCustomSubmit() {
+    const name = customForm.name.trim();
+    const category = (customForm.category || "").trim() || "기타";
+    if (!name) {
+      alert("제품 이름을 입력하세요.");
+      return;
+    }
+    const aliases = (customForm.aliasesText || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const created = addUserCustomProduct({
+      name,
+      category,
+      image: customForm.image?.trim(),
+      aliases,
+    });
+    // 신규 상품 즉시 선택
+    handleProductSelect(created);
+    // 2차 모달 닫기
+    customModal?.hide();
+  }
 
   function handleProductSelect(product: ProductInfo) {
     formState.selectedProduct = product;
@@ -83,14 +121,21 @@
   onMount(async () => {
     // 1) DOM 바인딩 보장
     await tick();
-
+ 
     // 2) ESM 번들에서 Modal 로드 (Popper 포함)
     const { Modal } = await import("bootstrap/dist/js/bootstrap.bundle");
-
+ 
     // 3) 안전한 인스턴스 획득
     if (modalEl) {
       modal = Modal.getOrCreateInstance(modalEl);
       modalEl.addEventListener("hidden.bs.modal", resetForm);
+    }
+    // 4) 2차 모달 인스턴스
+    if (customModalEl) {
+      customModal = Modal.getOrCreateInstance(customModalEl);
+      customModalEl.addEventListener("hidden.bs.modal", () => {
+        customForm = { ...customDefaultForm };
+      });
     }
   });
 </script>
@@ -163,7 +208,7 @@
             {/each}
             <hr class="my-2" />
             <h6 class="text-muted small px-1">내가 등록한 식자재</h6>
-            {#each USER_CUSTOM_PRODUCTS as product}
+            {#each $userCustomProducts as product}
               <button
                 type="button"
                 class="btn btn-outline-info btn-sm m-1"
@@ -177,7 +222,8 @@
             <button
               type="button"
               class="btn btn-outline-success btn-sm m-1"
-              disabled
+              data-bs-toggle="modal"
+              data-bs-target="#customProductModal"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -199,7 +245,7 @@
           <label class="form-label fw-bold">이미지</label>
           <div>
             <div class="btn-group" role="group">
-              <button type="button" class="btn btn-outline-primary">
+              <button type="button" class="btn btn-outline-primary" disabled>
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   width="16"
@@ -438,6 +484,47 @@
   </div>
 </div>
 
+<!-- 2차 모달: 사용자 정의 상품 직접 추가 -->
+<div
+  class="modal fade"
+  id="customProductModal"
+  tabindex="-1"
+  aria-labelledby="customProductModalLabel"
+  aria-hidden="true"
+  bind:this={customModalEl}
+>
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="customProductModalLabel">사용자 정의 식자재 추가</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <label class="form-label fw-bold">이름</label>
+          <input type="text" class="form-control" placeholder="예: 양파" bind:value={customForm.name} />
+        </div>
+        <div class="mb-2">
+          <label class="form-label fw-bold">카테고리</label>
+          <input type="text" class="form-control" placeholder="예: 채소" bind:value={customForm.category} />
+        </div>
+        <div class="mb-2">
+          <label class="form-label fw-bold">이미지 URL(선택)</label>
+          <input type="text" class="form-control" placeholder="http(s)://" bind:value={customForm.image} />
+        </div>
+        <div class="mb-2">
+          <label class="form-label fw-bold">별칭(쉼표로 구분)</label>
+          <input type="text" class="form-control" placeholder="예: onion, 양파채" bind:value={customForm.aliasesText} />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button type="button" class="btn btn-success" on:click={handleCustomSubmit}>등록</button>
+      </div>
+    </div>
+  </div>
+</div>
+ 
 <style>
   /* 이전 단일 파일 구현과 동일한 점선 테두리 */
   .border-dashed {

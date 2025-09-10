@@ -1,3 +1,5 @@
+import { writable, get } from "svelte/store";
+
 export type ProductInfo = {
   productId: string;
   name: string;
@@ -125,4 +127,47 @@ export function findProductInfo(productId: string): ProductInfo | undefined {
     SYSTEM_PRODUCTS.find((p) => p.productId === productId) ||
     USER_CUSTOM_PRODUCTS.find((p) => p.productId === productId)
   );
+}
+
+// 사용자 정의 상품 배열에 대한 Svelte 스토어(리스트 변화에 UI가 반응)
+export const userCustomProducts = writable<ProductInfo[]>([...USER_CUSTOM_PRODUCTS]);
+
+// USER 커스텀 상품 ID 생성기
+export function generateUserProductId(): string {
+  try {
+    const list = get(userCustomProducts);
+    const ids = [...list, ...USER_CUSTOM_PRODUCTS].map((p) => p.productId);
+    const nums = ids
+      .map((id) => {
+        const m = id?.match(/^USER(\d+)$/);
+        return m ? parseInt(m[1], 10) : NaN;
+      })
+      .filter((n) => !Number.isNaN(n));
+    const next = nums.length ? Math.max(...nums) + 1 : 1;
+    return `USER${String(next).padStart(3, "0")}`;
+  } catch {
+    return `USER${Date.now()}`;
+  }
+}
+
+// 사용자 정의 상품 추가 (스토어 업데이트 + 기존 배열 유지)
+export function addUserCustomProduct(input: {
+  name: string;
+  category: string;
+  image?: string;
+  aliases?: string[];
+}): ProductInfo {
+  const newProduct: ProductInfo = {
+    productId: generateUserProductId(),
+    name: (input.name || "").trim(),
+    category: (input.category || "").trim(),
+    source: "barcode",
+    image: input.image?.trim() || undefined,
+    aliases: input.aliases?.map((a) => a.trim()).filter(Boolean),
+  };
+  // 레거시 배열도 유지(직접 참조하는 코드 대비)
+  USER_CUSTOM_PRODUCTS.push(newProduct);
+  // 스토어 업데이트(앞에 추가하여 쉽게 보이도록)
+  userCustomProducts.update((list) => [newProduct, ...list]);
+  return newProduct;
 }
