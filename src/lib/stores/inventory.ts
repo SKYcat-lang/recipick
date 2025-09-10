@@ -11,6 +11,7 @@ function makeSignature(items: InventoryItem[]) {
       if (a?.type === "count") return `${pid}:count:${a.value}`;
       if (a?.type === "exact") return `${pid}:exact:${a.value}${a.unit || ""}`;
       if (a?.type === "step") return `${pid}:step:${a.level}`;
+      if (a?.type === "free") return `${pid}:free`;
       return `${pid}:none`;
     })
     .sort()

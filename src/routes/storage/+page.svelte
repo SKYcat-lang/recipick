@@ -93,13 +93,8 @@
       return;
     }
 
-    // 재료가 비어 있으면 호출하지 않음(초기 마운트 시 '보유 없음' 목록 노출 방지)
+    // 재료가 비어 있어도 기본 추천을 가져오도록 계속 진행
     const cur = $ingredients ?? [];
-    if (!cur.length) {
-      // 재료가 아직 준비되지 않은 타이밍이면 기존 목록/상태를 유지하고 반환
-      isLoadingRecipes.set(false);
-      return;
-    }
 
     const myNames = deriveMyNames(cur);
 
@@ -179,10 +174,7 @@
       return;
     }
     const cur = $ingredients ?? [];
-    if (!cur.length) {
-      mealLoading = false;
-      return;
-    }
+    // 재료가 비어 있어도 기본 추천을 가져오도록 계속 진행
     const myNames = deriveMyNames(cur);
 
     const sigLocal = $inventorySignature || "";
@@ -289,8 +281,9 @@
 
     // 초기 재료 준비 완료 감지 후 부트 플래그 설정과 첫 로드 트리거
     let unsub: () => void;
+    // 재료가 비어 있어도 최초 1회는 즉시 부트 완료 처리하여 빈 상태 UI를 표기
     unsub = ingredients.subscribe(($ings) => {
-      if (!bootReady && $ings && $ings.length > 0) {
+      if (!bootReady) {
         bootReady = true;
         lastSig = $inventorySignature || "";
         loadRecipes();
@@ -302,8 +295,9 @@
   });
 
   // 재고 구성 변할 때만 API 호출 (초기 세팅 완료 후에만)
-  $: if (bootReady && $inventorySignature && $inventorySignature !== lastSig) {
-    lastSig = $inventorySignature;
+  // 빈 서명("")으로 변할 때도 포함해 최신 상태로 동기화
+  $: if (bootReady && $inventorySignature !== lastSig) {
+    lastSig = $inventorySignature || "";
     loadRecipes();
     loadRecipesMealDb();
   }
@@ -319,18 +313,21 @@
       >
         <div class="row w-100 mx-0">
           <div class="col-12 col-lg-6 left">
-            <div class="title-row">
+            <div class="title-row" class:selecting={$selectedCount > 0}>
               <div class="title">냉장고</div>
-              {#if $selectedCount > 0}
-                <div class="title-actions">
-                  {#if $selectedCount === 1}
-                    <button class="btn btn-outline-primary btn-sm me-1" on:click={handleEdit}>편집</button>
-                  {/if}
-                  <button class="btn btn-outline-danger btn-sm me-1" on:click={handleDelete}>삭제</button>
-                  <button class="btn btn-outline-secondary btn-sm" on:click={() => clearSelection()}>선택 해제</button>
-                </div>
-              {/if}
+              <div class="title-actions">
+                {#if $selectedCount === 1}
+                  <button class="btn btn-outline-primary btn-sm me-1" on:click={handleEdit}>편집</button>
+                {/if}
+                <button class="btn btn-outline-danger btn-sm me-1" on:click={handleDelete}>삭제</button>
+                <button class="btn btn-outline-secondary btn-sm" on:click={() => clearSelection()}>선택 해제</button>
+              </div>
             </div>
+            {#if $ingredients.length === 0}
+              <div class="empty-placeholder bg-white border rounded-3 text-center py-3 mb-3">
+                냉장고가 비어 있습니다. + 버튼으로 재료를 추가하세요.
+              </div>
+            {/if}
             <FridgeGrid items={$ingredients} bind:this={desktopGridRef}>
               {#each $ingredients as ing, i}
                 <IngredientCard {ing} index={i} />
@@ -401,18 +398,21 @@
           role="tabpanel"
           aria-labelledby="tab-fridge-tab"
         >
-          <div class="title-row">
+          <div class="title-row" class:selecting={$selectedCount > 0}>
             <div class="title">냉장고</div>
-            {#if $selectedCount > 0}
-              <div class="title-actions">
-                {#if $selectedCount === 1}
-                  <button class="btn btn-outline-primary btn-sm me-1" on:click={handleEdit}>편집</button>
-                {/if}
-                <button class="btn btn-outline-danger btn-sm me-1" on:click={handleDelete}>삭제</button>
-                <button class="btn btn-outline-secondary btn-sm" on:click={() => clearSelection()}>선택 해제</button>
-              </div>
-            {/if}
+            <div class="title-actions">
+              {#if $selectedCount === 1}
+                <button class="btn btn-outline-primary btn-sm me-1" on:click={handleEdit}>편집</button>
+              {/if}
+              <button class="btn btn-outline-danger btn-sm me-1" on:click={handleDelete}>삭제</button>
+              <button class="btn btn-outline-secondary btn-sm" on:click={() => clearSelection()}>선택 해제</button>
+            </div>
           </div>
+          {#if $ingredients.length === 0}
+            <div class="empty-placeholder bg-white border rounded-3 text-center py-3 mb-3">
+              냉장고가 비어 있습니다. + 버튼으로 재료를 추가하세요.
+            </div>
+          {/if}
           <FridgeGrid
             items={$ingredients}
             mobileTwoCols={true}
@@ -483,17 +483,42 @@
   .title-row {
     position: relative;
     margin-bottom: 16px; /* 동일 간격 유지 */
+    height: 44px;        /* 타이틀과 동일한 고정 높이로 통일 */
+    display: flex;
+    align-items: center;
+    justify-content: center; /* 제목 중앙 정렬 */
+    padding: 8px 12px;       /* 두 상태 동일 패딩 유지 */
+    border: 1px solid transparent; /* 두 상태 동일 보더 두께 유지 */
+    border-radius: 12px;     /* 동일 라운드 유지 */
+    box-sizing: border-box;
+    background: transparent; /* 기본은 투명(타이틀 상태) */
   }
   .title-row .title {
     margin-bottom: 0; /* row 내부에서는 중복 간격 제거 */
+    line-height: 1;   /* 높이 일관성 */
   }
   .title-actions {
-    position: absolute;
-    right: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    display: flex;
+    display: none; /* 기본 비표시 (선택 모드에서만 표시) */
     gap: 8px;
+  }
+
+  /* 선택 모드: 제목 영역이 "액션 버튼 바"로 전환되며 흰 배경 카드처럼 보이고 스크롤에 따라옵니다 */
+  .title-row.selecting {
+    background: #ffffff;      /* 카드처럼 보이게 */
+    border-color: #eee;       /* 투명 → 실제 보더 컬러로 전환 (두께 동일) */
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+
+    position: sticky;
+    top: 12px;                /* 헤더/상단 여백 고려 */
+    z-index: 10;              /* 카드 위로 */
+  }
+  .title-row.selecting .title {
+    display: none; /* 선택 모드에서는 제목 숨김 */
+  }
+  .title-row.selecting .title-actions {
+    display: flex; /* 선택 모드에서는 액션 바 표시 */
+    justify-content: center;
+    width: 100%;
   }
 
   /* 레이아웃 안전 장치 */

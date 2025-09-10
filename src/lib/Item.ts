@@ -20,7 +20,10 @@ interface AmountExact {
   value: number;
   unit: Unit;
 }
-export type Amount = AmountCount | AmountStep | AmountExact;
+interface AmountFree {
+  type: 'free';
+}
+export type Amount = AmountCount | AmountStep | AmountExact | AmountFree;
 
 // --- Data Structure Interfaces/Classes ---
 
@@ -86,13 +89,20 @@ export class InventoryItem {
     switch (this.amount.type) {
       case 'count':
         return `${this.amount.value}개`;
-      case 'step':
+      case 'step': {
         const labels: { [key in StepLevel]: string } = {
-            full: '가득 참', high: '넉넉함', half: '절반 정도', low: '거의 없음', empty: '없음'
+          full: '가득 참',
+          high: '넉넉함',
+          half: '절반 정도',
+          low: '거의 없음',
+          empty: '없음'
         };
         return labels[this.amount.level];
+      }
       case 'exact':
         return `${this.amount.value}${this.amount.unit}`;
+      case 'free':
+        return '수량 무관';
     }
   }
   

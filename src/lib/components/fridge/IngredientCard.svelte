@@ -15,8 +15,18 @@
   let longPressTimer: any;
   let suppressClickOnce = false;
 
+  // Distinguish drag vs long-press
+  let startX = 0;
+  let startY = 0;
+  let pointerMoved = false;
+  const MOVE_THRESHOLD = 8; // px
+
   function onCardClickCapture(e: MouseEvent) {
     if ($selectionMode) {
+      // If user has selected text or dragged, don't toggle
+      const sel = (typeof window !== "undefined" && window.getSelection) ? (window.getSelection()?.toString() || "") : "";
+      if (sel.length > 0 || pointerMoved) return;
+
       if (suppressClickOnce) {
         suppressClickOnce = false;
         e.stopPropagation();
@@ -32,6 +42,17 @@
   function handlePointerDown(e: PointerEvent) {
     // ignore right-click
     if ((e as any).button === 2) return;
+
+    // Only enable long-press on touch (not mouse)
+    if ((e as any).pointerType && (e as any).pointerType !== "touch") return;
+
+    // Don't start long-press when starting in selectable text area
+    if (isInSelectableArea(e.target)) return;
+
+    startX = e.clientX;
+    startY = e.clientY;
+    pointerMoved = false;
+
     longPressActive = true;
     clearTimeout(longPressTimer);
     longPressTimer = setTimeout(() => {
@@ -48,9 +69,38 @@
     longPressActive = false;
     clearTimeout(longPressTimer);
   }
-  const handlePointerUp = cancelLongPress;
+
+  function handlePointerMove(e: PointerEvent) {
+    if (!longPressActive) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    if (Math.hypot(dx, dy) > MOVE_THRESHOLD) {
+      pointerMoved = true;
+      cancelLongPress();
+    }
+  }
+
+  function handlePointerUp(e: PointerEvent) {
+    const sel = (typeof window !== "undefined" && window.getSelection) ? (window.getSelection()?.toString() || "") : "";
+    if (sel.length > 0) {
+      // If text was selected, prevent any toggle side-effects
+      suppressClickOnce = true;
+    }
+    cancelLongPress();
+  }
+
+  function handleDragStart() {
+    cancelLongPress();
+  }
+
   const handlePointerLeave = cancelLongPress;
   const handlePointerCancel = cancelLongPress;
+
+  function isInSelectableArea(target: EventTarget | null): boolean {
+    const el = target as HTMLElement | null;
+    if (!el) return false;
+    return !!el.closest(".selectable, input, textarea");
+  }
 
   // 선택 상태 반응
   $: isSelected = $selected.has(index);
@@ -82,10 +132,23 @@
 
   $: if (TooltipCtor && badgeEl) {
     if (expired) {
-      TooltipCtor.getOrCreateInstance(badgeEl, {
+      // 선택 모드 + 선택 상태일 때 메시지 변경
+      const title =
+        $selectionMode && isSelected
+          ? "유통기한이 지난 재료가 선택되었습니다!"
+          : "유통기한이 지난 재료는 레시피 추천에 사용되지 않습니다!";
+      // DOM 속성 동기화
+      badgeEl.setAttribute("title", title);
+      badgeEl.setAttribute("data-bs-original-title", title);
+      const inst = TooltipCtor.getOrCreateInstance(badgeEl, {
         trigger: "hover focus click",
         placement: "left",
+        title
       });
+      // Bootstrap 5.2+ API: tooltip 내용 갱신 (하위 버전 호환 처리)
+      try {
+        inst?.setContent?.({ ".tooltip-inner": title });
+      } catch {}
     } else {
       TooltipCtor.getInstance(badgeEl)?.dispose();
     }
@@ -115,9 +178,11 @@
     class:selected={isSelected}
     on:click|capture={onCardClickCapture}
     on:pointerdown={handlePointerDown}
+    on:pointermove={handlePointerMove}
     on:pointerup={handlePointerUp}
     on:pointerleave={handlePointerLeave}
     on:pointercancel={handlePointerCancel}
+    on:dragstart={handleDragStart}
   >
     <!-- 좌상단 선택 토글 버튼 -->
     <button
@@ -150,7 +215,7 @@
         aria-label="유통기한 경고"
         data-bs-toggle="tooltip"
         data-bs-placement="left"
-        title="유통기한이 지난 재료는 레시피 추천에 사용되지 않습니다!"
+        title={$selectionMode && isSelected ? "유통기한이 지난 재료가 선택되었습니다!" : "유통기한이 지난 재료는 레시피 추천에 사용되지 않습니다!"}
         >!</button
       >
     {/if}
@@ -166,7 +231,7 @@
     {/if}
 
     <div class="text-center mb-2">
-      <div><strong>{ing.product.name}</strong></div>
+      <div class="selectable"><strong>{ing.product.name}</strong></div>
       {#if ing.expirationDate}
         <small
           >{ing.expirationDate?.getUTCFullYear()}년 {ing.expirationDate?.getMonth() +
@@ -176,45 +241,47 @@
       {/if}
     </div>
 
-    <div class="counter">
-      {#if ing.amount.type === "count"}
-        <button
-          class="btn btn-secondary btn-sm"
-          on:click={() => decCount(index)}
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            fill="currentColor"
-            class="bi bi-dash"
-            viewBox="0 2 16 16"
-            ><path
-              d="M4 8a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7A.5.5 0 0 1 4 8"
-            /></svg
+    {#if ing.amount.type !== "free"}
+      <div class="counter">
+        {#if ing.amount.type === "count"}
+          <button
+            class="btn btn-secondary btn-sm"
+            on:click={() => decCount(index)}
           >
-        </button>
-        <span>{ing.getDisplayAmount()}</span>
-        <button
-          class="btn btn-secondary btn-sm"
-          on:click={() => incCount(index)}
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            fill="currentColor"
-            class="bi bi-plus"
-            viewBox="0 2 16 16"
-            ><path
-              d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4"
-            /></svg
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              fill="currentColor"
+              class="bi bi-dash"
+              viewBox="0 2 16 16"
+              ><path
+                d="M4 8a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7A.5.5 0 0 1 4 8"
+              /></svg
+            >
+          </button>
+          <span>{ing.getDisplayAmount()}</span>
+          <button
+            class="btn btn-secondary btn-sm"
+            on:click={() => incCount(index)}
           >
-        </button>
-      {:else}
-        <span>{ing.getDisplayAmount()}</span>
-      {/if}
-    </div>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              fill="currentColor"
+              class="bi bi-plus"
+              viewBox="0 2 16 16"
+              ><path
+                d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4"
+              /></svg
+            >
+          </button>
+        {:else}
+          <span>{ing.getDisplayAmount()}</span>
+        {/if}
+      </div>
+    {/if}
 
     {#if !editing}
       <button
@@ -307,15 +374,21 @@
   .ingredient-card {
     position: relative;
   }
+  /* Allow text selection for selectable areas */
+  .ingredient-card .selectable {
+    user-select: text;
+    -webkit-user-select: text;
+    -ms-user-select: text;
+  }
 
   .ingredient-card.expired {
     border-radius: 6px;
     border: 2px solid #dc3545; /* Bootstrap danger color */
   }
 
-  /* 선택 상태 파란 테두리 (기본 회색 테두리와 같은 두께) */
+  /* 선택 상태 보라 테두리 (기본 회색 테두리와 같은 두께) */
   .ingredient-card.selected {
-    border: 2px solid #0d6efd !important; /* Bootstrap primary */
+    border: 2px solid #8250DF !important; /* Violet theme */
     border-radius: 6px;
   }
 
@@ -329,7 +402,7 @@
     height: 22px;
     border-radius: 50%;
     background: #fff;
-    color: #0d6efd;
+    color: #8250DF;
     border: 2px solid #e0e0e0;
     display: flex;
     align-items: center;
@@ -347,8 +420,8 @@
     transition: opacity 120ms ease, transform 120ms ease;
   }
   .select-toggle.active {
-    border: 2px solid #0d6efd;
-    background: #0d6efd;
+    border: 2px solid #8250DF;
+    background: #8250DF;
     color: #fff;
   }
   /* 호버/선택 시 체크버튼 페이드 인 */

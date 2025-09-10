@@ -14,6 +14,7 @@ export const savedRecipes = writable<{ recipe: string; keywords: string[] }[]>(
   []
 );
 
+
 // ==============================
 // Selection state for fridge grid
 // ==============================

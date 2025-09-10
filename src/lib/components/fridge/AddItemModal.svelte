@@ -21,7 +21,7 @@
 
   const defaultFormState = {
     selectedProduct: null as ProductInfo | null,
-    amountType: "count" as "count" | "step" | "exact",
+    amountType: "count" as "count" | "step" | "exact" | "free",
     countValue: undefined as number | undefined,
     stepLevel: "half" as StepLevel,
     exactValue: undefined as number | undefined,
@@ -75,6 +75,8 @@
   }
   function resetForm() {
     formState = { ...defaultFormState };
+    // UI 상태까지 완전 초기화 (라디오/URL 입력 등)
+    showUrlInput = false;
   }
 
   function handleSubmit() {
@@ -104,6 +106,9 @@
           value: formState.exactValue,
           unit: formState.exactUnit,
         } as any;
+        break;
+      case "free":
+        amount = { type: "free" } as any;
         break;
     }
     const newItem = new InventoryItem(
@@ -315,29 +320,44 @@
               class="btn-check"
               name="amountType"
               id="type-count"
+              value="count"
+              bind:group={formState.amountType}
               autocomplete="off"
-              checked
-              on:change={() => (formState.amountType = "count")}
             />
             <label class="btn btn-outline-primary" for="type-count">개수</label>
+
             <input
               type="radio"
               class="btn-check"
               name="amountType"
               id="type-step"
+              value="step"
+              bind:group={formState.amountType}
               autocomplete="off"
-              on:change={() => (formState.amountType = "step")}
             />
             <label class="btn btn-outline-primary" for="type-step">단계</label>
+
             <input
               type="radio"
               class="btn-check"
               name="amountType"
               id="type-exact"
+              value="exact"
+              bind:group={formState.amountType}
               autocomplete="off"
-              on:change={() => (formState.amountType = "exact")}
             />
             <label class="btn btn-outline-primary" for="type-exact">용량</label>
+
+            <input
+              type="radio"
+              class="btn-check"
+              name="amountType"
+              id="type-free"
+              value="free"
+              bind:group={formState.amountType}
+              autocomplete="off"
+            />
+            <label class="btn btn-outline-primary" for="type-free">수량 무관</label>
           </div>
           {#if formState.amountType === "count"}
             <div class="input-group">

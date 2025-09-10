@@ -1,7 +1,7 @@
 <script lang="ts">
   import { GoogleGenerativeAI } from "@google/generative-ai";
-  import { availableIngredients } from "$lib/stores/inventory";
-  import { aiWaiting, aiResponseMd, savedRecipes } from "$lib/stores/ui";
+  import { availableIngredients, ingredients as allIngredients } from "$lib/stores/inventory";
+  import { aiWaiting, aiResponseMd, savedRecipes, selected, selectionMode } from "$lib/stores/ui";
   import { getAiRecipeJSON, toMarkdown } from "$lib/services/ai";
   import type { AiRecipeJSON } from "$lib/types/recipe";
 
@@ -26,9 +26,44 @@
   let optServings: number | "" = "";
   let optCuisine = { 한식: false, 양식: false, 중식: false, 일식: false };
   let optTools = { airfryer: false, noOven: true };
+  // 엄격 모드: 제공 재료만 사용(추가 재료 금지)
+  let optStrict = false;
   // 끼니 선택(미선택 시 현재 시각 기반 자동 추론)
   let optMeal: "" | "아침" | "점심" | "저녁" = "";
   let aiResult: AiRecipeJSON | null = null;
+  let aiErrorMsg: string | null = null;
+
+  function getErrorStatus(err: any): number | undefined {
+    return err?.status ?? err?.response?.status ?? err?.cause?.status;
+  }
+  function isTransientError(err: any): boolean {
+    const status = getErrorStatus(err);
+    if (status && [429, 500, 502, 503, 504].includes(Number(status))) return true;
+    const msg = String(err?.message || "").toLowerCase();
+    return /quota|rate|unavailable|timeout|network|fetch|server/i.test(msg);
+  }
+  function formatErrorMessage(err: any): string {
+    const status = getErrorStatus(err);
+    if (status === 429) return "AI 요청이 잠시 많습니다(429). 잠시 후 다시 시도해주세요.";
+    if (status === 503) return "AI 서버가 일시적으로 사용 불가(503)입니다. 잠시 후 다시 시도해주세요.";
+    if (status === 500 || status === 502 || status === 504) return "AI 서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
+    const msg = err?.message || "AI 응답을 가져오는 중 문제가 발생했습니다.";
+    return `AI 오류: ${msg}`;
+  }
+  const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  // 선택 항목 유통기한 경과 여부 판단 (오늘 00:00 기준)
+  function isExpired(it: any): boolean {
+    const d = it?.expirationDate as Date | undefined;
+    if (!d) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dl = new Date(d);
+    dl.setHours(0, 0, 0, 0);
+    return dl.getTime() < today.getTime();
+  }
+
+  // 외부 트리거 제거됨 - 선택 모드에서 패널 내 버튼으로 실행
 
   function cleanStep(text: string): string {
     let s = (text ?? '').trim();
@@ -95,13 +130,30 @@
     if (optTools.noOven) tools.push("오븐 없이 조리 가능");
     if (tools.length) parts.push(`- 조리도구 조건: ${tools.join(", ")}`);
 
+    // 엄격 모드: 추가 재료 금지(대체재/옵션 포함)
+    if (optStrict) {
+      parts.push(
+        "- 엄격 재료 사용: 제공된 재료 목록 외 추가 재료를 절대 사용하지 마세요. " +
+        "대체재/옵션/토핑/향신료 등 목록에 없는 모든 재료 금지. " +
+        "필요 시 레시피 구성을 현재 재료만으로 가능한 방식으로 변경하세요."
+      );
+    }
+
     return parts.join("\n");
   }
 
   async function runAi() {
     aiWaiting.set(true);
     aiResponseMd.set("");
-    const myIngredientsList = $availableIngredients
+    aiErrorMsg = null;
+    const baseItems =
+      $selectionMode
+        ? Array.from($selected)
+            .map((i) => $allIngredients[i])
+            .filter(Boolean) // 선택 모드: 유통기한 무시
+        : $availableIngredients;
+  
+    const myIngredientsList = baseItems
       .map((i) => i.product.name.split("(")[0].trim())
       .join(", ");
     try {
@@ -124,7 +176,7 @@ const mealRe = {
   "야식": /야식/
 } as const;
 
-const memoEntries = $availableIngredients
+const memoEntries = baseItems
   .map((i) => {
     const name = i.product.name.split("(")[0].trim();
     const memo = (i.memo || "").trim();
@@ -160,18 +212,49 @@ ${memoEntries.join("\n")}
         .filter((s) => s && s.trim())
         .join("\n");
 
-      const json: AiRecipeJSON = await getAiRecipeJSON({
-        genAI,
-        ingredientsList: myIngredientsList,
-        mode,
-        desiredInput: desired,
-        modifiers,
-      });
+      let json: AiRecipeJSON | null = null;
+      const backoffs = [0, 700, 1500];
+      let lastErr: any = null;
+
+      for (let attempt = 0; attempt < backoffs.length; attempt++) {
+        if (backoffs[attempt] > 0) await delay(backoffs[attempt]);
+        try {
+          json = await getAiRecipeJSON({
+            genAI,
+            ingredientsList: myIngredientsList,
+            mode,
+            desiredInput: desired,
+            modifiers,
+          });
+          break;
+        } catch (err) {
+          lastErr = err;
+          if (!isTransientError(err) || attempt === backoffs.length - 1) {
+            throw err;
+          }
+          // transient → 다음 루프에서 재시도
+        }
+      }
+
+      if (!json) throw lastErr;
+      // 엄격 모드: 추가 추천 재료 강제 비우기
+      if (optStrict && (json as any)?.재료) {
+        try {
+          (json as any).재료.추가추천재료 = [];
+        } catch {}
+      }
       aiResult = json;
-      const md = toMarkdown(json);
+
+      let md = "";
+      try {
+        md = toMarkdown(json);
+      } catch {
+        md = `## ${json.이름}\n\n- 키워드: ${json.키워드?.join(", ") || "-"}`;
+      }
       aiResponseMd.set(md);
     } catch (e) {
-      aiResponseMd.set("⚠️ AI 응답을 가져오는 중 문제가 발생했습니다.");
+      aiResponseMd.set("");
+      aiErrorMsg = formatErrorMessage(e as any);
       console.error(e);
     } finally {
       aiWaiting.set(false);
@@ -191,7 +274,7 @@ ${memoEntries.join("\n")}
   }
 </script>
 
-<div class="ai-box rounded-2 p-4">
+<div id="ai-panel" class="ai-box rounded-2 p-4">
   <div class="text-center mb-3">
     <span class="fw-bold fs-5">AI 레시피 추천</span>
   </div>
@@ -205,8 +288,10 @@ ${memoEntries.join("\n")}
       bind:group={mode}
       checked
     />
-    <label class="btn btn-outline-primary" for="ai-current"
-      >보유 재료 기반</label
+    <label
+      class="btn {$selectionMode ? 'btn-outline-violet' : 'btn-outline-primary'}"
+      for="ai-current"
+      >{$selectionMode ? '선택 재료 기반' : '보유 재료 기반'}</label
     >
     <input
       type="radio"
@@ -216,7 +301,9 @@ ${memoEntries.join("\n")}
       value="desired"
       bind:group={mode}
     />
-    <label class="btn btn-outline-primary" for="ai-desired"
+    <label
+      class="btn {$selectionMode ? 'btn-outline-violet' : 'btn-outline-primary'}"
+      for="ai-desired"
       >메뉴/키워드 기반</label
     >
   </div>
@@ -235,7 +322,7 @@ ${memoEntries.join("\n")}
   {/if}
 
   <div class="d-grid">
-    <button class="btn btn-success" on:click={runAi} disabled={$aiWaiting}>
+    <button class="btn {$selectionMode ? 'btn-violet' : 'btn-success'}" on:click={runAi} disabled={$aiWaiting}>
       {#if $aiWaiting}
         <span
           class="spinner-border spinner-border-sm"
@@ -244,10 +331,18 @@ ${memoEntries.join("\n")}
         ></span>
         AI가 레시피를 만들고 있어요...
       {:else}
-        AI에게 레시피 추천받기
+        {$selectionMode ? '선택한 재료로 추천받기' : 'AI에게 레시피 추천받기'}
       {/if}
     </button>
   </div>
+  {#if aiErrorMsg}
+    <div class="alert alert-warning mt-2 text-start small" role="alert">
+      <div class="d-flex justify-content-between align-items-center">
+        <span>{aiErrorMsg}</span>
+        <button class="btn btn-sm btn-outline-secondary" on:click={runAi} disabled={$aiWaiting}>다시 시도</button>
+      </div>
+    </div>
+  {/if}
 
   <div class="mt-2 text-end">
     <button
@@ -273,6 +368,15 @@ ${memoEntries.join("\n")}
           />
           <label class="btn btn-outline-secondary btn-sm" for="optWeatherBtn"
             >날씨 반영</label
+          >
+          <input
+            class="btn-check"
+            id="optStrictBtn"
+            type="checkbox"
+            bind:checked={optStrict}
+          />
+          <label class="btn btn-outline-secondary btn-sm" for="optStrictBtn"
+            >엄격 재료만</label
           >
 
           {#if optWeather}
@@ -718,5 +822,36 @@ ${memoEntries.join("\n")}
     background-color: var(--bs-secondary);
     border-color: var(--bs-secondary);
     color: #fff;
+  }
+
+  /* ===== Violet theme (선택 모드 전용) ===== */
+  .btn-violet {
+    color: #fff;
+    background-color: #8250DF;
+    border-color: #8250DF;
+  }
+  .btn-violet:hover,
+  .btn-violet:focus {
+    color: #fff;
+    background-color: #6f3fd7;
+    border-color: #6f3fd7;
+  }
+
+  .btn-outline-violet {
+    color: #8250DF;
+    border-color: #8250DF;
+  }
+  .btn-outline-violet:hover,
+  .btn-outline-violet:focus {
+    color: #fff;
+    background-color: #8250DF;
+    border-color: #8250DF;
+  }
+  /* 라디오 토글 선택 시 보라색으로 유지 */
+  .btn-check:checked + .btn.btn-outline-violet,
+  .btn-outline-violet.active {
+    color: #fff;
+    background-color: #8250DF;
+    border-color: #8250DF;
   }
 </style>
