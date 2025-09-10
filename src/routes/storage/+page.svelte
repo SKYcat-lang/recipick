@@ -14,8 +14,17 @@
     ingredients,
     inventorySignature,
     setIngredients,
+    removeItemsAtIndices,
   } from "$lib/stores/inventory";
-  import { isDesktop, isLoadingRecipes, recipeError } from "$lib/stores/ui";
+  import {
+    isDesktop,
+    isLoadingRecipes,
+    recipeError,
+    selected,
+    selectedCount,
+    clearSelection,
+    editTarget,
+  } from "$lib/stores/ui";
   import { findProductInfo } from "$lib/data/products";
   import { fetchRecipeMatches } from "$lib/services/foodsafety";
   import { fetchMealDbMatches } from "$lib/services/mealdb";
@@ -210,6 +219,20 @@
     }
   }
 
+  // 선택/편집/삭제 핸들러
+  function handleDelete() {
+    const indices = Array.from($selected);
+    if (!indices.length) return;
+    removeItemsAtIndices(indices);
+    clearSelection();
+  }
+
+  function handleEdit() {
+    const indices = Array.from($selected);
+    if (indices.length !== 1) return;
+    editTarget.set(indices[0]);
+  }
+
   onMount(() => {
     // 데모용 초기 재료
     setIngredients([
@@ -296,7 +319,18 @@
       >
         <div class="row w-100 mx-0">
           <div class="col-12 col-lg-6 left">
-            <div class="title">냉장고</div>
+            <div class="title-row">
+              <div class="title">냉장고</div>
+              {#if $selectedCount > 0}
+                <div class="title-actions">
+                  {#if $selectedCount === 1}
+                    <button class="btn btn-outline-primary btn-sm me-1" on:click={handleEdit}>편집</button>
+                  {/if}
+                  <button class="btn btn-outline-danger btn-sm me-1" on:click={handleDelete}>삭제</button>
+                  <button class="btn btn-outline-secondary btn-sm" on:click={() => clearSelection()}>선택 해제</button>
+                </div>
+              {/if}
+            </div>
             <FridgeGrid items={$ingredients} bind:this={desktopGridRef}>
               {#each $ingredients as ing, i}
                 <IngredientCard {ing} index={i} />
@@ -367,7 +401,18 @@
           role="tabpanel"
           aria-labelledby="tab-fridge-tab"
         >
-          <div class="title">냉장고</div>
+          <div class="title-row">
+            <div class="title">냉장고</div>
+            {#if $selectedCount > 0}
+              <div class="title-actions">
+                {#if $selectedCount === 1}
+                  <button class="btn btn-outline-primary btn-sm me-1" on:click={handleEdit}>편집</button>
+                {/if}
+                <button class="btn btn-outline-danger btn-sm me-1" on:click={handleDelete}>삭제</button>
+                <button class="btn btn-outline-secondary btn-sm" on:click={() => clearSelection()}>선택 해제</button>
+              </div>
+            {/if}
+          </div>
           <FridgeGrid
             items={$ingredients}
             mobileTwoCols={true}
@@ -433,6 +478,22 @@
     font-weight: bold;
     margin-bottom: 16px;
     text-align: center;
+  }
+
+  .title-row {
+    position: relative;
+    margin-bottom: 16px; /* 동일 간격 유지 */
+  }
+  .title-row .title {
+    margin-bottom: 0; /* row 내부에서는 중복 간격 제거 */
+  }
+  .title-actions {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    gap: 8px;
   }
 
   /* 레이아웃 안전 장치 */

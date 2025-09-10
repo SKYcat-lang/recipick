@@ -79,7 +79,7 @@ export async function getAiRecipeJSON({
 
   const prompt = buildPrompt(ingredientsList, userLine, modifiers);
 
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
   const result = await model.generateContent({
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     generationConfig: { responseMimeType: "application/json" },

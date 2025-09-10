@@ -66,3 +66,13 @@ export function updateMemo(idx: number, memo: string) {
     return [...arr];
   });
 }
+
+/**
+ * 선택된 인덱스들의 아이템을 삭제한다.
+ * - 인덱스 기준으로 삭제하며, 한 번의 update로 처리한다.
+ */
+export function removeItemsAtIndices(indices: number[]) {
+  if (!Array.isArray(indices) || indices.length === 0) return;
+  const set = new Set(indices);
+  ingredients.update((arr) => arr.filter((_, i) => !set.has(i)));
+}
