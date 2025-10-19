@@ -1,13 +1,44 @@
 import type { AiRecipeJSON } from "$lib/types/recipe";
 import { allowedKeywords } from "$lib/types/recipe";
 
-function buildPrompt(myIngredientsList: string, userLine: string, modifiers?: string) {
-  const extra = (modifiers && modifiers.trim())
-    ? `
+// 오류 발생시 자동 재시도 - X, 오류가 난걸 사용자에게 알릴 것.
+
+// ===== Performance helpers: model reuse, caching, in-flight dedupe, timeout =====
+
+const MODEL_NAME = "gemini-2.5-flash";
+const DEFAULT_TIMEOUT_MS = 30000; // 30초 타임아웃
+
+
+// genAI 인스턴스별 모델 재사용 (생성 비용/지연 감소)
+const modelSingleton = new WeakMap<any, Map<string, any>>();
+function getModel(genAI: any, name = MODEL_NAME) {
+  let inner = modelSingleton.get(genAI);
+  if (!inner) {
+    inner = new Map();
+    modelSingleton.set(genAI, inner);
+  }
+  if (!inner.has(name)) {
+    inner.set(name, genAI.getGenerativeModel({ model: name }));
+  }
+  return inner.get(name);
+}
+
+
+function normalizeForKey(s?: string) {
+  return (s ?? "").replace(/\s+/g, " ").trim();
+}
+function buildPrompt(
+  myIngredientsList: string,
+  userLine: string,
+  modifiers?: string
+) {
+  const extra =
+    modifiers && modifiers.trim()
+      ? `
 
 # 선호/조건
 ${modifiers.trim()}`
-    : "";
+      : "";
 
   return `# 출력 규칙 (매우 중요)
  - 오직 JSON 하나만 반환하세요. 마크다운, 코드펜스, 설명, 주석 금지.
@@ -23,29 +54,10 @@ ${modifiers.trim()}`
  - 위 형식을 위반하거나 다른 텍스트를 포함하면 응답은 무효입니다.
 
  # 해석 지침
-- 메모는 재료별 참고 정보이며, 출력 JSON에는 포함하지 않습니다. "보유재료"는 반드시 ${myIngredientsList} 문자열에서만 파생합니다.
-- 아래 "메모 적용 규칙"을 반드시 준수하세요. 어기지 마세요. 규칙을 어기면 응답은 무효입니다.
+ - "보유재료"는 반드시 ${myIngredientsList} 문자열에서만 파생합니다. 제공된 재료 외의 텍스트로 유추하거나 확장하지 마세요.
 
-메모 적용 규칙(반드시 준수)
-1) 일반 메모(시간/날짜 언급 없음)는 항상 참고 가능합니다.
-2) 시간·날짜 언급이 있는 메모는 현재 기준과 정확히 일치할 때만 적용하고, 불일치하면 절대 반영하지 마세요.
-   - 시간대 키워드: "아침","점심","저녁","야식"
-   - 날짜·상대일 키워드 예: "오늘","내일","모레","이번 주말","다음 주","월/화/수/목/금/토/일"
-3) 불일치 예시(모두 무시):
-   - 현재가 아침/점심인데 메모가 "오늘 저녁 메뉴"
-   - 메모가 "내일 저녁에 먹을 것"
-   - 현재 선택 끼니가 "점심"인데 메모가 "저녁에 먹기"
-4) 일치 예시(적용):
-   - 현재가 저녁이고 메모가 "오늘 저녁 메뉴"
-   - 현재 선택 끼니가 "아침"이고 메모가 "아침에 추천"
-5) "내일/모레/다음 주" 등 미래 시점을 가리키는 메모는 지금 시점 추천에서는 반드시 제외하세요.
-
-주의
-- 메모는 추천 로직에만 참고되며, 출력 JSON에는 포함하지 않습니다.
-- 시간/날짜가 불일치하는 메모는 낮은 가중치로 반영하지 말고, 아예 반영하지 마세요.
-
-# 사용자 요청
- ${userLine}${extra}
+ # 사용자 요청
+  ${userLine}${extra}
  
  # 반환 예시:
  {
@@ -72,37 +84,203 @@ export async function getAiRecipeJSON({
   desiredInput?: string;
   modifiers?: string;
 }): Promise<AiRecipeJSON> {
+  // 캐시/중복 억제 제거: 매 클릭마다 항상 새 요청을 수행
   const userLine =
     mode === "current"
       ? `현재 가지고 있는 재료는 ${ingredientsList} 입니다. 이 재료들을 활용해 새로운 레시피를 창작해주세요.`
-      : `"${desiredInput}" 컨셉의 레시피를 창작해주세요. 현재 가진 재료는 ${ingredientsList} 입니다.`;
+      : `"${normalizeForKey(desiredInput)}" 컨셉의 레시피를 창작해주세요. 현재 가진 재료는 ${ingredientsList} 입니다.`;
 
   const prompt = buildPrompt(ingredientsList, userLine, modifiers);
 
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-  const result = await model.generateContent({
+  const model = getModel(genAI, MODEL_NAME);
+
+  const generationConfig = {
+    responseMimeType: "application/json",
+    maxOutputTokens: 2000,
+    temperature: 0.5,
+    topK: 18,
+    topP: 0.75,
+  };
+
+  const task = model.generateContent({
     contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: { responseMimeType: "application/json" },
+    generationConfig,
   });
 
-  const raw = result.response.text();
-  return parseAiJsonStrict(raw);
+  const timeoutMs = DEFAULT_TIMEOUT_MS;
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("timeout: AI 응답 지연")), timeoutMs)
+  );
+
+  const result = (await Promise.race([task, timeoutPromise])) as any;
+
+  const raw = await extractRawResponse(result);
+  if (!raw || !raw.trim()) throw new Error("empty ai response");
+
+  const json = parseAiJsonStrict(raw);
+  return json;
+}
+
+// Gemini 응답에서 텍스트/JSON을 견고하게 추출하기 위한 헬퍼
+function decodeInlineDataBase64(b64: string): string {
+  const clean = String(b64 || "").replace(/\s/g, "");
+  if (!clean) return "";
+  try {
+    if (typeof atob === "function") {
+      try {
+        // UTF-8 안전 디코딩
+        return decodeURIComponent(escape(atob(clean)));
+      } catch {
+        return atob(clean);
+      }
+    }
+    // Node.js/SSR 환경 대비
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const B: any = (globalThis as any).Buffer;
+    if (B) return B.from(clean, "base64").toString("utf-8");
+    // Buffer가 없으면 디코딩 불가 환경
+    throw new Error("inlineData 디코딩 환경 미지원");
+  } catch (e) {
+    // 디코딩 실패를 명시적으로 알림
+    throw new Error("inlineData 디코딩 실패");
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function extractRawResponse(result: any): Promise<string> {
+  const resp = result?.response;
+  if (!resp) return "";
+
+  // 1) 표준 text() 우선 - 차단 예외를 별도 오류로 변환
+  const maybeText = (resp as any).text;
+  if (typeof maybeText === "function") {
+    try {
+      const t = maybeText.call(resp);
+      if (typeof t === "string" && t.trim()) return t;
+    } catch (e: any) {
+      const block =
+        e?.response?.promptFeedback?.blockReason ||
+        e?.response?.candidates?.[0]?.finishReason;
+      if (block) throw new Error(`응답 차단됨(${block})`);
+      throw e;
+    }
+  } else if (typeof maybeText === "string" && maybeText.trim()) {
+    return maybeText;
+  }
+
+  // 2) 후보 파트에서 text/inlineData(application/json) 추출
+  const candidates = (resp as any).candidates ?? [];
+  let sawFunctionCall = false;
+
+  for (const c of candidates) {
+    const parts = c?.content?.parts ?? [];
+    for (const p of parts) {
+      if (typeof p?.text === "string" && p.text.trim()) return p.text;
+
+      const mime = p?.inlineData?.mimeType || p?.inline_data?.mime_type;
+      const data = p?.inlineData?.data || p?.inline_data?.data;
+      if (data && /json/i.test(String(mime || ""))) {
+        try {
+          const decoded = decodeInlineDataBase64(data);
+          if (decoded.trim()) return decoded;
+        } catch {
+          // 디코딩 실패를 명시적 에러로 전달
+          throw new Error("inlineData 디코딩 실패");
+        }
+      }
+
+      if (p?.functionCall) {
+        sawFunctionCall = true;
+      }
+    }
+  }
+
+  // functionCall-only 케이스 명시적 오류
+  if (sawFunctionCall) {
+    throw new Error("지원하지 않는 응답 형식(functionCall-only)");
+  }
+
+  // 3) 안전성 차단/종료 사유를 의미 있는 에러로 승격
+  const block =
+    (resp as any)?.promptFeedback?.blockReason ||
+    candidates?.[0]?.finishReason;
+  if (block) throw new Error(`응답 차단됨(${block})`);
+
+  return "";
 }
 
 export function parseAiJsonStrict(text: string): AiRecipeJSON {
-  let payload = text.trim();
+  // 1) 기본 정리
+  let payload = String(text ?? "").trim();
+
+  // 코드펜스 제거
   if (payload.startsWith("```")) {
     payload = payload
       .replace(/^```(?:json)?\s*/i, "")
       .replace(/```$/i, "")
       .trim();
   }
-  if (!(payload.startsWith("{") && payload.endsWith("}"))) {
-    const s = payload.indexOf("{");
+
+  // 선행 BOM 제거
+  payload = payload.replace(/^\uFEFF/, "");
+
+  // 가능한 JSON 본문 추출: 첫 여는 중괄호부터
+  const s = payload.indexOf("{");
+  if (s !== -1) {
     const e = payload.lastIndexOf("}");
-    if (s !== -1 && e !== -1 && e > s) payload = payload.slice(s, e + 1);
+    if (e !== -1 && e > s) {
+      payload = payload.slice(s, e + 1);
+    } else {
+      payload = payload.slice(s);
+    }
   }
-  const obj = JSON.parse(payload);
+
+  // 2) 파싱 함수
+  const tryParse = (str: string) => JSON.parse(str);
+
+  // 3) 수리 함수: 흔한 오류(끝부분 잘림/트레일링 콤마/닫힘 괄호 부족) 자동 보정
+  function repairJson(str: string): string {
+    let out = String(str ?? "");
+
+    // 트레일링 콤마 제거: } 또는 ] 앞의 콤마
+    out = out.replace(/,\s*(?=[}\]])/g, "");
+
+    // 마지막 닫힘 괄호 이후의 찌꺼기 제거
+    const lastObj = out.lastIndexOf("}");
+    const lastArr = out.lastIndexOf("]");
+    const lastCloser = Math.max(lastObj, lastArr);
+    if (lastCloser !== -1) {
+      out = out.slice(0, lastCloser + 1);
+    }
+
+    // 괄호 균형 맞추기
+    const count = (s: string, re: RegExp) => (s.match(re) || []).length;
+    const openObj = count(out, /{/g);
+    const closeObj = count(out, /}/g);
+    const openArr = count(out, /\[/g);
+    const closeArr = count(out, /]/g);
+
+    if (closeArr < openArr) out += "]".repeat(openArr - closeArr);
+    if (closeObj < openObj) out += "}".repeat(openObj - closeObj);
+
+    return out;
+  }
+
+  let obj: any;
+  try {
+    obj = tryParse(payload);
+  } catch (e1) {
+    // 1차 실패 → 수리 후 재시도
+    const fixed = repairJson(payload);
+    try {
+      obj = tryParse(fixed);
+    } catch (e2) {
+      // 그대로 실패 → 상위에서 재시도 로직(재생성) 수행
+      throw e2;
+    }
+  }
+
+  // 4) 스키마 검증
   for (const k of ["이름", "재료", "레시피", "키워드"]) {
     if (!(k in obj)) throw new Error(`필드 누락: ${k}`);
   }

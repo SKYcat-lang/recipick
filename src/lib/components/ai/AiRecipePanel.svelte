@@ -32,6 +32,7 @@
   let optMeal: "" | "아침" | "점심" | "저녁" = "";
   let aiResult: AiRecipeJSON | null = null;
   let aiErrorMsg: string | null = null;
+  let lastRunId = 0;
 
   function getErrorStatus(err: any): number | undefined {
     return err?.status ?? err?.response?.status ?? err?.cause?.status;
@@ -47,8 +48,20 @@
     if (status === 429) return "AI 요청이 잠시 많습니다(429). 잠시 후 다시 시도해주세요.";
     if (status === 503) return "AI 서버가 일시적으로 사용 불가(503)입니다. 잠시 후 다시 시도해주세요.";
     if (status === 500 || status === 502 || status === 504) return "AI 서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
-    const msg = err?.message || "AI 응답을 가져오는 중 문제가 발생했습니다.";
-    return `AI 오류: ${msg}`;
+    const raw = String(err?.message || "");
+    const m = raw.toLowerCase();
+    if (m.includes("empty ai response")) return "AI 응답이 비어 있습니다. 잠시 후 다시 시도해주세요.";
+    // ai.ts에서 응답 차단 시 한국어 메시지로 전달됨
+    if (raw.startsWith("응답 차단됨(")) return raw;
+    // inlineData 디코딩 실패를 명확히 안내
+    if (raw.includes("inlineData 디코딩 실패") || (m.includes("inlinedata") && m.includes("디코딩") && m.includes("실패"))) {
+      return "AI 응답 내부 JSON 데이터 디코딩에 실패했습니다. 잠시 후 다시 시도해주세요.";
+    }
+    // functionCall-only 응답 형식 안내
+    if (m.includes("functioncall-only")) {
+      return "모델이 함수 호출 전용 응답을 반환했습니다. 현재 응답 형식은 지원하지 않습니다.";
+    }
+    return `AI 오류: ${raw || "AI 응답을 가져오는 중 문제가 발생했습니다."}`;
   }
   const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -83,18 +96,12 @@
       parts.push(`- 끼니: ${optMeal}에 어울리는 메뉴를 제안하세요.`);
     } else {
       const now = new Date();
-      const nowStr = now.toLocaleTimeString("ko-KR", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      });
       const h = now.getHours();
       let mealByNow: "아침" | "점심" | "저녁" | "야식";
       if (h >= 5 && h < 11) mealByNow = "아침";
       else if (h >= 11 && h < 16) mealByNow = "점심";
       else if (h >= 16 && h < 22) mealByNow = "저녁";
       else mealByNow = "야식";
-      parts.push(`- 현재 시각: ${nowStr}`);
       parts.push(`- 끼니: ${mealByNow}에 어울리는 메뉴를 제안하세요.`);
     }
 
@@ -146,118 +153,91 @@
     aiWaiting.set(true);
     aiResponseMd.set("");
     aiErrorMsg = null;
+    const runId = ++lastRunId;
+
+    const DEBUG = !!import.meta.env?.DEV;
+    const hasPerf = typeof performance !== "undefined";
+    if (DEBUG && hasPerf) console.time(`ai.runAi#${runId}`);
+
     const baseItems =
       $selectionMode
         ? Array.from($selected)
             .map((i) => $allIngredients[i])
             .filter(Boolean) // 선택 모드: 유통기한 무시
         : $availableIngredients;
-  
-    const myIngredientsList = baseItems
-      .map((i) => i.product.name.split("(")[0].trim())
-      .join(", ");
-    try {
-      // 재료별 메모 블록 구성
-      const now = new Date();
-const hNow = now.getHours();
-let mealByNow: "아침" | "점심" | "저녁" | "야식";
-if (hNow >= 5 && hNow < 11) mealByNow = "아침";
-else if (hNow >= 11 && hNow < 16) mealByNow = "점심";
-else if (hNow >= 16 && hNow < 22) mealByNow = "저녁";
-else mealByNow = "야식";
-const selectedMeal = optMeal || mealByNow;
 
-const futureRe = /(내일|모레|다음\s*주|이번\s*주말|주말|다다음|다음달|다음\s*달)/;
-const todayRe = /오늘/;
-const mealRe = {
-  "아침": /아침/,
-  "점심": /점심/,
-  "저녁": /저녁/,
-  "야식": /야식/
-} as const;
-
-const memoEntries = baseItems
-  .map((i) => {
-    const name = i.product.name.split("(")[0].trim();
-    const memo = (i.memo || "").trim();
-    if (!memo) return "";
-    // 미래 지시가 있는 메모는 지금 추천에서 제외
-    if (futureRe.test(memo)) return "";
-    const mentionsAnyMeal = Object.values(mealRe).some((re) => re.test(memo));
-    if (todayRe.test(memo)) {
-      // 오늘 + 끼니 언급 시, 선택된 끼니와 정확히 일치할 때만 포함
-      if (mentionsAnyMeal && !mealRe[selectedMeal].test(memo)) return "";
-    } else if (mentionsAnyMeal) {
-      // 날짜 언급 없이 끼니만 언급 시, 현재/선택 끼니와 일치할 때만 포함
-      if (!mealRe[selectedMeal].test(memo)) return "";
+    if (DEBUG) {
+      try {
+        console.debug("[AI] baseItems:", baseItems.length, "selectionMode:", $selectionMode);
+      } catch {}
     }
-    return `- ${name}: "${memo.replace(/"/g, '\\"')}"`;
-  })
-  .filter(Boolean);
 
-      const memoBlock = memoEntries.length
-        ? `
-# 재료 메모
-각 항목은 해당 재료에 대한 사용자 메모입니다.
-- 시간/날짜가 현재(또는 사용자가 선택한 끼니)와 정확히 일치하는 경우에만 적용하세요.
-- 불일치하거나 미래 지시("내일","모레","다음 주" 등)는 지금 추천에서 절대 반영하지 마세요.
-- 낮은 가중치로도 반영하지 마세요.
-- 메모 텍스트는 출력 JSON에 포함하지 마세요.
-${memoEntries.join("\n")}
-`
-        : "";
+    const names: string[] = [];
+    const seen = new Set<string>();
+    for (const it of baseItems) {
+      const base = it.product.name.split("(")[0].trim();
+      const key = base.normalize("NFKC").toLowerCase().replace(/\s+/g, " ");
+      if (!seen.has(key)) {
+        seen.add(key);
+        names.push(base);
+      }
+    }
+    const myIngredientsList = names.join(", ");
 
-      const baseModifiers = buildModifiers();
-      const modifiers = [baseModifiers, memoBlock]
-        .filter((s) => s && s.trim())
-        .join("\n");
+    try {
+      if (DEBUG && hasPerf) console.time(`ai.prompt#${runId}`);
 
-      let json: AiRecipeJSON | null = null;
-      const backoffs = [0, 700, 1500];
-      let lastErr: any = null;
+      const modifiers = buildModifiers();
 
-      for (let attempt = 0; attempt < backoffs.length; attempt++) {
-        if (backoffs[attempt] > 0) await delay(backoffs[attempt]);
+      if (DEBUG && hasPerf) {
+        console.timeEnd(`ai.prompt#${runId}`);
         try {
-          json = await getAiRecipeJSON({
-            genAI,
-            ingredientsList: myIngredientsList,
-            mode,
-            desiredInput: desired,
-            modifiers,
-          });
-          break;
-        } catch (err) {
-          lastErr = err;
-          if (!isTransientError(err) || attempt === backoffs.length - 1) {
-            throw err;
-          }
-          // transient → 다음 루프에서 재시도
-        }
+          console.debug("[AI] prompt sizes:", { ingredientsLen: myIngredientsList.length, modifiersLen: modifiers.length });
+        } catch {}
       }
 
-      if (!json) throw lastErr;
+      let json: AiRecipeJSON | null = null;
+
+      if (DEBUG && hasPerf) console.time(`ai.api#${runId}`);
+      json = await getAiRecipeJSON({
+        genAI,
+        ingredientsList: myIngredientsList,
+        mode,
+        desiredInput: desired,
+        modifiers,
+      });
+      if (DEBUG && hasPerf) console.timeEnd(`ai.api#${runId}`);
+
       // 엄격 모드: 추가 추천 재료 강제 비우기
       if (optStrict && (json as any)?.재료) {
         try {
           (json as any).재료.추가추천재료 = [];
         } catch {}
       }
+      if (runId !== lastRunId) return;
       aiResult = json;
 
+      if (DEBUG && hasPerf) console.time(`ai.md#${runId}`);
       let md = "";
       try {
         md = toMarkdown(json);
       } catch {
         md = `## ${json.이름}\n\n- 키워드: ${json.키워드?.join(", ") || "-"}`;
       }
+      if (runId !== lastRunId) return;
       aiResponseMd.set(md);
+      if (DEBUG && hasPerf) console.timeEnd(`ai.md#${runId}`);
     } catch (e) {
-      aiResponseMd.set("");
-      aiErrorMsg = formatErrorMessage(e as any);
+      if (runId === lastRunId) {
+        aiResponseMd.set("");
+        aiErrorMsg = formatErrorMessage(e as any);
+      }
       console.error(e);
     } finally {
-      aiWaiting.set(false);
+      if (runId === lastRunId) {
+        aiWaiting.set(false);
+      }
+      if (DEBUG && hasPerf) console.timeEnd(`ai.runAi#${runId}`);
     }
   }
 
