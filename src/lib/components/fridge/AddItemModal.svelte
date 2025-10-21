@@ -126,10 +126,10 @@
   onMount(async () => {
     // 1) DOM 바인딩 보장
     await tick();
- 
+
     // 2) ESM 번들에서 Modal 로드 (Popper 포함)
     const { Modal } = await import("bootstrap/dist/js/bootstrap.bundle");
- 
+
     // 3) 안전한 인스턴스 획득
     if (modalEl) {
       modal = Modal.getOrCreateInstance(modalEl);
@@ -193,7 +193,7 @@
       </div>
       <div class="modal-body">
         <div class="mb-3">
-          <label for="product-list" class="form-label fw-bold">제품 선택</label>
+          <div class="form-label fw-bold">제품 선택</div>
           <div
             id="product-list"
             class="border rounded p-2"
@@ -247,7 +247,7 @@
           </div>
         </div>
         <div class="mb-3">
-          <label class="form-label fw-bold">이미지</label>
+          <div class="form-label fw-bold">이미지</div>
           <div>
             <div class="btn-group" role="group">
               <button type="button" class="btn btn-outline-primary" disabled>
@@ -313,7 +313,7 @@
           {/if}
         </div>
         <div class="mb-3">
-          <label class="form-label fw-bold">수량</label>
+          <div class="form-label fw-bold">수량</div>
           <div class="btn-group w-100 mb-2" role="group">
             <input
               type="radio"
@@ -357,7 +357,9 @@
               bind:group={formState.amountType}
               autocomplete="off"
             />
-            <label class="btn btn-outline-primary" for="type-free">수량 무관</label>
+            <label class="btn btn-outline-primary" for="type-free"
+              >수량 무관</label
+            >
           </div>
           {#if formState.amountType === "count"}
             <div class="input-group">
@@ -516,35 +518,81 @@
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="customProductModalLabel">사용자 정의 식자재 추가</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <h5 class="modal-title" id="customProductModalLabel">
+          사용자 정의 식자재 추가
+        </h5>
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+          aria-label="Close"
+        ></button>
       </div>
       <div class="modal-body">
         <div class="mb-2">
-          <label class="form-label fw-bold">이름</label>
-          <input type="text" class="form-control" placeholder="예: 양파" bind:value={customForm.name} />
+          <label for="custom-name" class="form-label fw-bold">이름</label>
+          <input
+            id="custom-name"
+            type="text"
+            class="form-control"
+            placeholder="예: 양파"
+            bind:value={customForm.name}
+          />
         </div>
+
         <div class="mb-2">
-          <label class="form-label fw-bold">카테고리</label>
-          <input type="text" class="form-control" placeholder="예: 채소" bind:value={customForm.category} />
+          <label for="custom-category" class="form-label fw-bold"
+            >카테고리</label
+          >
+          <input
+            id="custom-category"
+            type="text"
+            class="form-control"
+            placeholder="예: 채소"
+            bind:value={customForm.category}
+          />
         </div>
+
         <div class="mb-2">
-          <label class="form-label fw-bold">이미지 URL(선택)</label>
-          <input type="text" class="form-control" placeholder="http(s)://" bind:value={customForm.image} />
+          <label for="custom-image" class="form-label fw-bold"
+            >이미지 URL(선택)</label
+          >
+          <input
+            id="custom-image"
+            type="text"
+            class="form-control"
+            placeholder="http(s)://"
+            bind:value={customForm.image}
+          />
         </div>
+
         <div class="mb-2">
-          <label class="form-label fw-bold">별칭(쉼표로 구분)</label>
-          <input type="text" class="form-control" placeholder="예: onion, 양파채" bind:value={customForm.aliasesText} />
+          <label for="custom-aliases" class="form-label fw-bold"
+            >별칭(쉼표로 구분)</label
+          >
+          <input
+            id="custom-aliases"
+            type="text"
+            class="form-control"
+            placeholder="예: onion, 양파채"
+            bind:value={customForm.aliasesText}
+          />
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
-        <button type="button" class="btn btn-success" on:click={handleCustomSubmit}>등록</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"
+          >취소</button
+        >
+        <button
+          type="button"
+          class="btn btn-success"
+          on:click={handleCustomSubmit}>등록</button
+        >
       </div>
     </div>
   </div>
 </div>
- 
+
 <style>
   /* 이전 단일 파일 구현과 동일한 점선 테두리 */
   .border-dashed {
