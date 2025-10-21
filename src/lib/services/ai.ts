@@ -8,7 +8,6 @@ import { allowedKeywords } from "$lib/types/recipe";
 const MODEL_NAME = "gemini-2.5-flash";
 const DEFAULT_TIMEOUT_MS = 30000; // 30초 타임아웃
 
-
 // genAI 인스턴스별 모델 재사용 (생성 비용/지연 감소)
 const modelSingleton = new WeakMap<any, Map<string, any>>();
 function getModel(genAI: any, name = MODEL_NAME) {
@@ -22,7 +21,6 @@ function getModel(genAI: any, name = MODEL_NAME) {
   }
   return inner.get(name);
 }
-
 
 function normalizeForKey(s?: string) {
   return (s ?? "").replace(/\s+/g, " ").trim();
@@ -55,6 +53,7 @@ ${modifiers.trim()}`
 
  # 해석 지침
  - "보유재료"는 반드시 ${myIngredientsList} 문자열에서만 파생합니다. 제공된 재료 외의 텍스트로 유추하거나 확장하지 마세요.
+ - 응답 길이는 600-800자 내외로 응답할 것.
 
  # 사용자 요청
   ${userLine}${extra}
@@ -69,6 +68,32 @@ ${modifiers.trim()}`
    "레시피": ["1단계 ...", "2단계 ..."],
    "키워드": ["한식","채식"]
  }`.trim();
+}
+
+function buildResponseSchema() {
+  return {
+    type: "object",
+    properties: {
+      이름: { type: "string" },
+      재료: {
+        type: "object",
+        properties: {
+          보유재료: { type: "array", items: { type: "string" } },
+          추가추천재료: { type: "array", items: { type: "string" } },
+        },
+        required: ["보유재료"],
+      },
+      레시피: {
+        type: "array",
+        items: { type: "string" },
+      },
+      키워드: {
+        type: "array",
+        items: { type: "string", enum: allowedKeywords },
+      },
+    },
+    required: ["이름", "재료", "레시피", "키워드"],
+  };
 }
 
 export async function getAiRecipeJSON({
@@ -88,7 +113,9 @@ export async function getAiRecipeJSON({
   const userLine =
     mode === "current"
       ? `현재 가지고 있는 재료는 ${ingredientsList} 입니다. 이 재료들을 활용해 새로운 레시피를 창작해주세요.`
-      : `"${normalizeForKey(desiredInput)}" 컨셉의 레시피를 창작해주세요. 현재 가진 재료는 ${ingredientsList} 입니다.`;
+      : `"${normalizeForKey(
+          desiredInput
+        )}" 컨셉의 레시피를 창작해주세요. 현재 가진 재료는 ${ingredientsList} 입니다.`;
 
   const prompt = buildPrompt(ingredientsList, userLine, modifiers);
 
@@ -96,15 +123,32 @@ export async function getAiRecipeJSON({
 
   const generationConfig = {
     responseMimeType: "application/json",
-    maxOutputTokens: 2000,
-    temperature: 0.5,
-    topK: 18,
-    topP: 0.75,
+    maxOutputTokens: 512,
+    temperature: 1.0, // 창의성 조금 부여
+    topK: 3, // 후보 확장
+    topP: 0.9, // 확률 분산 약간 허용
+    thinkingConfig: {
+      thinkingBudget: 0, // ← 추론을 꺼버림
+      includeThoughts: false,
+    },
   };
 
+  const systemInstruction = [
+    "오직 JSON 하나만 반환하세요. 마크다운/설명/주석 금지.",
+    '최상위 키는 "이름","재료","레시피","키워드"만 허용. 그 외 키 금지.',
+    "추론 과정이나 중간 사고를 서술하지 말고 최종 JSON만 출력하세요.",
+  ].join("\n");
+
   const task = model.generateContent({
+    systemInstruction: {
+      role: "system",
+      parts: [{ text: systemInstruction }],
+    },
     contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig,
+    generationConfig: {
+      ...generationConfig,
+      responseSchema: buildResponseSchema(),
+    },
   });
 
   const timeoutMs = DEFAULT_TIMEOUT_MS;
@@ -146,6 +190,81 @@ function decodeInlineDataBase64(b64: string): string {
   }
 }
 
+// ===== Debug helpers: raw Gemini response logging for blocked/invalid cases =====
+const __DEV__ = import.meta.env.DEV;
+
+// Pretty-print but avoid circular and overlong values
+function safeStringify(obj: any, max = 20000) {
+  try {
+    const cache = new WeakSet();
+    const s = JSON.stringify(
+      obj,
+      (k, v) => {
+        if (typeof v === "bigint") return String(v);
+        if (typeof v === "function") return `[Function ${v.name || "anon"}]`;
+        if (typeof v === "object" && v !== null) {
+          if (cache.has(v)) return "[Circular]";
+          cache.add(v);
+        }
+        return v;
+      },
+      2
+    );
+    return s.length > max ? s.slice(0, max) + "…(truncated)" : s;
+  } catch {
+    try {
+      return String(obj);
+    } catch {
+      return "[unstringifiable]";
+    }
+  }
+}
+
+function summarizeResp(resp: any) {
+  try {
+    const candidates = resp?.candidates ?? [];
+    return {
+      modelVersion: resp?.modelVersion ?? resp?.model,
+      promptFeedback: resp?.promptFeedback,
+      usageMetadata: resp?.usageMetadata,
+      candidates: candidates.map((c: any) => ({
+        finishReason: c?.finishReason,
+        safetyRatings: c?.safetyRatings,
+        parts: (c?.content?.parts ?? []).map((p: any) => ({
+          hasText: !!p?.text,
+          textPreview:
+            typeof p?.text === "string"
+              ? String(p.text).slice(0, 160)
+              : undefined,
+          hasInlineJson: !!(p?.inlineData?.data || p?.inline_data?.data),
+          mime: p?.inlineData?.mimeType || p?.inline_data?.mime_type,
+        })),
+      })),
+    };
+  } catch {
+    return { note: "summarizeResp failed" };
+  }
+}
+
+function debugLogRawResponse(resp: any, tag = "ai.raw") {
+  if (!__DEV__) return;
+  try {
+    // Grouped logging to keep console tidy
+    // eslint-disable-next-line no-console
+    console.groupCollapsed(`[AI][RAW] ${tag}`);
+    // eslint-disable-next-line no-console
+    console.log("[AI][RAW] summary:", summarizeResp(resp));
+    // eslint-disable-next-line no-console
+    console.log("[AI][RAW] full:", resp);
+    // eslint-disable-next-line no-console
+    console.log("[AI][RAW] full(JSON):", safeStringify(resp));
+    // eslint-disable-next-line no-console
+    console.groupEnd();
+  } catch {
+    // ignore logging errors
+  }
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function extractRawResponse(result: any): Promise<string> {
   const resp = result?.response;
@@ -158,6 +277,9 @@ async function extractRawResponse(result: any): Promise<string> {
       const t = maybeText.call(resp);
       if (typeof t === "string" && t.trim()) return t;
     } catch (e: any) {
+      try {
+        debugLogRawResponse(resp, "text() threw");
+      } catch {}
       const block =
         e?.response?.promptFeedback?.blockReason ||
         e?.response?.candidates?.[0]?.finishReason;
@@ -184,6 +306,9 @@ async function extractRawResponse(result: any): Promise<string> {
           const decoded = decodeInlineDataBase64(data);
           if (decoded.trim()) return decoded;
         } catch {
+          try {
+            debugLogRawResponse(resp, "inlineData decode fail");
+          } catch {}
           // 디코딩 실패를 명시적 에러로 전달
           throw new Error("inlineData 디코딩 실패");
         }
@@ -202,9 +327,13 @@ async function extractRawResponse(result: any): Promise<string> {
 
   // 3) 안전성 차단/종료 사유를 의미 있는 에러로 승격
   const block =
-    (resp as any)?.promptFeedback?.blockReason ||
-    candidates?.[0]?.finishReason;
-  if (block) throw new Error(`응답 차단됨(${block})`);
+    (resp as any)?.promptFeedback?.blockReason || candidates?.[0]?.finishReason;
+  if (block) {
+    try {
+      debugLogRawResponse(resp, `blocked:${block}`);
+    } catch {}
+    throw new Error(`응답 차단됨(${block})`);
+  }
 
   return "";
 }
