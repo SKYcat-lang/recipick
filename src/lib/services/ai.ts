@@ -1,11 +1,12 @@
 import type { AiRecipeJSON } from "$lib/types/recipe";
 import { allowedKeywords } from "$lib/types/recipe";
+import type { InventoryItem } from "$lib/Item";
 
 // 오류 발생시 자동 재시도 - X, 오류가 난걸 사용자에게 알릴 것.
 
 // ===== Performance helpers: model reuse, caching, in-flight dedupe, timeout =====
 
-const MODEL_NAME = "gemini-2.5-flash";
+const MODEL_NAME = "gemini-3-flash-preview";
 const DEFAULT_TIMEOUT_MS = 30000; // 30초 타임아웃
 
 // genAI 인스턴스별 모델 재사용 (생성 비용/지연 감소)
@@ -26,10 +27,11 @@ function normalizeForKey(s?: string) {
   return (s ?? "").replace(/\s+/g, " ").trim();
 }
 function buildPrompt(
-  myIngredientsList: string,
+  ingredients: InventoryItem[],
   userLine: string,
   modifiers?: string
 ) {
+  const names = ingredients.map((i) => i.product.name).join(", ");
   const extra =
     modifiers && modifiers.trim()
       ? `
@@ -38,13 +40,21 @@ function buildPrompt(
 ${modifiers.trim()}`
       : "";
 
+  const formattedIngredients = ingredients
+    .map((item) => {
+      return `## ${item.product.name}\n-용량: ${item.getDisplayAmount()}\n-메모: ${
+        item.memo || "없음"
+      }`;
+    })
+    .join("\n\n");
+
   return `# 출력 규칙 (매우 중요)
  - 오직 JSON 하나만 반환하세요. 마크다운, 코드펜스, 설명, 주석 금지.
  - JSON의 최상위 키는 정확히 다음 4개만 허용됩니다: "이름", "재료", "레시피", "키워드".
  - 각 필드의 형식:
    - "이름": string
    - "재료": object
-       - "보유재료": string[]  // 반드시 ${myIngredientsList} 에서 파생
+       - "보유재료": string[]  // 반드시 ${names} 에서 파생
        - "추가추천재료": string[] // 선택
    - "레시피": string[] // 단계별 조리 설명
    - "키워드": string[] // 아래 후보에서 1~3개 (정확 일치, 공백 없음)
@@ -52,7 +62,7 @@ ${modifiers.trim()}`
  - 위 형식을 위반하거나 다른 텍스트를 포함하면 응답은 무효입니다.
 
  # 해석 지침
- - "보유재료"는 반드시 ${myIngredientsList} 문자열에서만 파생합니다. 제공된 재료 외의 텍스트로 유추하거나 확장하지 마세요.
+ - "보유재료"는 반드시 ${names} 문자열에서만 파생합니다. 제공된 재료 외의 텍스트로 유추하거나 확장하지 마세요.
  - 응답 길이는 600-800자 내외로 응답할 것.
 
  # 사용자 요청
@@ -67,7 +77,10 @@ ${modifiers.trim()}`
    },
    "레시피": ["1단계 ...", "2단계 ..."],
    "키워드": ["한식","채식"]
- }`.trim();
+ }
+
+ # 현재 재고
+${formattedIngredients}`.trim();
 }
 
 function buildResponseSchema() {
@@ -104,18 +117,19 @@ export async function getAiRecipeJSON({
   modifiers,
 }: {
   genAI: any;
-  ingredientsList: string;
+  ingredientsList: InventoryItem[];
   mode: "current" | "desired";
   desiredInput?: string;
   modifiers?: string;
 }): Promise<AiRecipeJSON> {
   // 캐시/중복 억제 제거: 매 클릭마다 항상 새 요청을 수행
+  const names = ingredientsList.map((i) => i.product.name).join(", ");
   const userLine =
     mode === "current"
-      ? `현재 가지고 있는 재료는 ${ingredientsList} 입니다. 이 재료들을 활용해 새로운 레시피를 창작해주세요.`
+      ? `현재 가지고 있는 재료는 ${names} 입니다. 이 재료들을 활용해 새로운 레시피를 창작해주세요.`
       : `"${normalizeForKey(
           desiredInput
-        )}" 컨셉의 레시피를 창작해주세요. 현재 가진 재료는 ${ingredientsList} 입니다.`;
+        )}" 컨셉의 레시피를 창작해주세요. 현재 가진 재료는 ${names} 입니다.`;
 
   const prompt = buildPrompt(ingredientsList, userLine, modifiers);
 
@@ -123,14 +137,8 @@ export async function getAiRecipeJSON({
 
   const generationConfig = {
     responseMimeType: "application/json",
-    maxOutputTokens: 512,
-    temperature: 1.0, // 창의성 조금 부여
-    topK: 3, // 후보 확장
-    topP: 0.9, // 확률 분산 약간 허용
-    thinkingConfig: {
-      thinkingBudget: 0, // ← 추론을 꺼버림
-      includeThoughts: false,
-    },
+    maxOutputTokens: 1024,
+    temperature: 1.0, // 기본값 (구글 가이드 참조)
   };
 
   const systemInstruction = [

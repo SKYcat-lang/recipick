@@ -172,18 +172,6 @@
       } catch {}
     }
 
-    const names: string[] = [];
-    const seen = new Set<string>();
-    for (const it of baseItems) {
-      const base = it.product.name.split("(")[0].trim();
-      const key = base.normalize("NFKC").toLowerCase().replace(/\s+/g, " ");
-      if (!seen.has(key)) {
-        seen.add(key);
-        names.push(base);
-      }
-    }
-    const myIngredientsList = names.join(", ");
-
     try {
       if (DEBUG && hasPerf) console.time(`ai.prompt#${runId}`);
 
@@ -192,7 +180,7 @@
       if (DEBUG && hasPerf) {
         console.timeEnd(`ai.prompt#${runId}`);
         try {
-          console.debug("[AI] prompt sizes:", { ingredientsLen: myIngredientsList.length, modifiersLen: modifiers.length });
+          console.debug("[AI] prompt sizes:", { ingredientsLen: baseItems.length, modifiersLen: modifiers.length });
         } catch {}
       }
 
@@ -201,7 +189,7 @@
       if (DEBUG && hasPerf) console.time(`ai.api#${runId}`);
       json = await getAiRecipeJSON({
         genAI,
-        ingredientsList: myIngredientsList,
+        ingredientsList: baseItems,
         mode,
         desiredInput: desired,
         modifiers,
