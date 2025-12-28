@@ -1,51 +1,48 @@
 <script>
     import Header from '$lib/components/header.svelte';
     import Footer from '$lib/components/footer.svelte';
-    import { goto } from '$app/navigation';
-    import { user } from '$lib/stores.js'; // 1번에서 만든 스토어를 가져옵니다.
+    import { page } from "$app/stores"; // page 스토어 추가
+    import { signIn, signOut } from "@auth/sveltekit/client"; // Auth.js 함수 추가
 
-    function handleGoogleLogin() {
-        // 2번에서 만든 가상 리디렉션 페이지로 이동합니다.
-        goto('/auth/google/callback');
-    }
-
-    function handleLogout() {
-        // 스토어의 사용자 정보를 null로 설정하면 stores.js의 로직에 의해 localStorage도 정리됩니다.
-        user.set(null);
-    }
+    // 기존 user 스토어 관련 코드는 이제 필요 없습니다.
 </script>
 
 <Header />
 
-    <main>
-        <div class="container">
-            <div class="row">
-                <div class="col-xl-7 py-xl-5">
-                    <div class="container auto py-5 px-md-5">
-                        <h5 class="text-white py-xl-4"><b>Discover Dellcious Recipes</b> - 맛있는 요리법을 발견하세요.</h5>
-                        <div class="py-md-1 py-xl-5">
-                            <h1 class="text-white display-4 fw-medium">레시피로 가득한</h1>
-                            <h1 class="px-md-4 text-white display-4 fw-medium">맛있는 여정</h1>
-                        </div>
+<main>
+    <div class="container">
+        <div class="row">
+            <div class="col-xl-7 py-xl-5">
+                <div class="container auto py-5 px-md-5">
+                    <h5 class="text-white py-xl-4"><b>Discover Dellcious Recipes</b> - 맛있는 요리법을 발견하세요.</h5>
+                    <div class="py-md-1 py-xl-5">
+                        <h1 class="text-white display-4 fw-medium">레시피로 가득한</h1>
+                        <h1 class="px-md-4 text-white display-4 fw-medium">맛있는 여정</h1>
                     </div>
                 </div>
-                
-{#if $user}
+            </div>
+            
+            <!-- ▼ 로그인 상태 체크 ($page.data.session) -->
+            {#if $page.data.session}
+                <!-- 로그인 상태 -->
                 <div class="col-xl-5">
-                <div class="modal modal-sheet position-static d-block p-4 py-md-5">
+                    <div class="modal modal-sheet position-static d-block p-4 py-md-5">
                         <div class="modal-dialog">
                             <div class="modal-content rounded-4 shadow">
                                 <div class="p-5 pb-4 border-bottom-0">
                                     <div class="d-flex align-items-center">
-                                        <img src={$user.picture} alt="프로필 사진" class="rounded-circle me-4" width="100" height="100">
+                                        {#if $page.data.session.user?.image}
+                                            <img src={$page.data.session.user.image} alt="프로필 사진" class="rounded-circle me-4" width="100" height="100">
+                                        {/if}
                                         <div class="d-flex flex-column align-items-start">
-                                            <h3 class="fw-bold mb-1">{$user.name}</h3>
-                                            <p class="text-muted">{$user.email}</p>
+                                            <h3 class="fw-bold mb-1">{$page.data.session.user?.name}</h3>
+                                            <p class="text-muted">{$page.data.session.user?.email}</p>
                                         </div>
                                     </div>
-                                    <p class="text-end">
-                                        <a class=" text-muted px-1" href="manager">마이페이지</a>
-                                        <a class=" text-muted px-1" href="#" on:click={handleLogout}>로그아웃</a>
+                                    <p class="text-end mt-3">
+                                        <a class="text-muted px-1" href="manager">마이페이지</a>
+                                        <!-- ▼ 로그아웃 버튼 수정 -->
+                                        <button class="btn btn-link text-muted px-1 text-decoration-none" on:click={() => signOut()}>로그아웃</button>
                                     </p>
                                 </div>
                             </div>
@@ -53,7 +50,8 @@
                     </div>
                 </div>
 
-{:else}
+            {:else}
+                <!-- 비로그인 상태 -->
                 <div class="col-xl-5">
                     <div class="modal modal-sheet position-static d-block p-4 py-md-5 my-md-5" tabindex="-1" role="dialog" id="modalSignin">
                         <div class="modal-dialog">
@@ -62,29 +60,31 @@
                                     <h1 class="fs-2"><b class="fw-bold">로그인</b> - Recipick</h1>
                                 </div>
                                 <div class="modal-body px-5 pt-3 pb-4">
-                                    <form on:submit|preventDefault> <div class="form-floating mb-3">
-                                        <button class="w-100 py-2 my-2 btn btn-outline-primary rounded-3" type="button" on:click={handleGoogleLogin}>
-                                            <svg class="bi me-1" width="16" height="16" aria-hidden="true"><use xlink:href="#google"></use></svg>
-                                            Sign up with Google
-                                        </button>
-                                        <button class="w-100 py-2 my-2 btn btn-outline-github rounded-3" type="button">
-                                            <svg class="bi me-1" width="16" height="16" aria-hidden="true"><use xlink:href="#github"></use></svg>
-                                            Sign up with GitHub
-                                        </button>
-                                        <button class="w-100 py-2 my-2 btn btn-outline-kakao rounded-3" type="button">
-                                            <svg class="bi me-1" width="16" height="16" aria-hidden="true"><use xlink:href="#kakao"></use></svg>
-                                            Sign up with Kakao
-                                        </button>
+                                    <form on:submit|preventDefault> 
+                                        <div class="form-floating mb-3">
+                                            <button class="w-100 py-2 my-2 btn btn-outline-primary rounded-3" type="button" on:click={() => signIn("google", { callbackUrl: "/" })}>
+                                                <svg class="bi me-1" width="16" height="16" aria-hidden="true"><use xlink:href="#google"></use></svg>
+                                                Google 계정으로 시작하기
+                                            </button>
+                                            <button class="w-100 py-2 my-2 btn btn-outline-github rounded-3" type="button">
+                                                <svg class="bi me-1" width="16" height="16" aria-hidden="true"><use xlink:href="#github"></use></svg>
+                                                Sign up with GitHub
+                                            </button>
+                                            <button class="w-100 py-2 my-2 btn btn-outline-kakao rounded-3" type="button">
+                                                <svg class="bi me-1" width="16" height="16" aria-hidden="true"><use xlink:href="#kakao"></use></svg>
+                                                Sign up with Kakao
+                                            </button>
+                                        </div>
                                     </form>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-{/if}
-            </div>
+            {/if}
         </div>
-    </main>
+    </div>
+</main>
 
 <Footer />
 

@@ -338,8 +338,8 @@
           <div class="col-12 col-lg-6 right">
             <div class="recommend-header">
               <span class="recommend-title">재료&레시피 추천</span>
-              <select class="gemini-25-flash-select"
-                ><option>Gemini 2.5 Flash</option></select
+              <select class="gemini-3-flash-select"
+                ><option>Gemini 3 Flash Preview</option></select
               >
             </div>
             <AiRecipePanel />
@@ -432,8 +432,8 @@
         >
           <div class="recommend-header">
             <span class="recommend-title">재료&레시피 추천</span>
-            <select class="gemini-25-flash-select"
-              ><option>Gemini 2.5 Flash</option></select
+            <select class="gemini-3-flash-select"
+              ><option>Gemini 3 Flash Preview</option></select
             >
           </div>
           <AiRecipePanel />

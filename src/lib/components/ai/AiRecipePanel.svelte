@@ -709,7 +709,7 @@
     font-size: 1.2rem;
     font-weight: bold;
   }
-  :global(.gemini-25-flash-select) {
+  :global(.gemini-3-flash-select) {
     background: #eee;
     border: none;
     border-radius: 8px;

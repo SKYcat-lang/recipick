@@ -42,33 +42,51 @@ ${modifiers.trim()}`
 
   const formattedIngredients = ingredients
     .map((item) => {
-      return `## ${item.product.name}\n-용량: ${item.getDisplayAmount()}\n-메모: ${
-        item.memo || "없음"
-      }`;
+      return `## ${item.product.name}
+-남은 수량: ${item.getDisplayAmount()}
+-메모: ${item.memo || "(메모 없음)"}
+`;
     })
     .join("\n\n");
 
-  return `# 출력 규칙 (매우 중요)
+  return `# 현재 재고
+${formattedIngredients}
+
+# 출력 규칙 (매우 중요)
  - 오직 JSON 하나만 반환하세요. 마크다운, 코드펜스, 설명, 주석 금지.
  - JSON의 최상위 키는 정확히 다음 4개만 허용됩니다: "이름", "재료", "레시피", "키워드".
  - 각 필드의 형식:
    - "이름": string
    - "재료": object
-       - "보유재료": string[]  // 반드시 ${names} 에서 파생
-       - "추가추천재료": string[] // 선택
-   - "레시피": string[] // 단계별 조리 설명
-   - "키워드": string[] // 아래 후보에서 1~3개 (정확 일치, 공백 없음)
- - "키워드" 후보: ["디저트","샐러드","고기","해산물","국/탕","면요리","채식","한식","양식","중식","일식","동남아","퓨전"]
- - 위 형식을 위반하거나 다른 텍스트를 포함하면 응답은 무효입니다.
+       - "보유재료": string[]
+       - "추가추천재료": string[]
+   - "레시피": string[] 
+   - "키워드": string[]
 
- # 해석 지침
- - "보유재료"는 반드시 ${names} 문자열에서만 파생합니다. 제공된 재료 외의 텍스트로 유추하거나 확장하지 마세요.
+## 이름
+ - 10자 이내로 간결하고 명확한 이름을 지정하세요.
+
+## 재료
+ - "보유재료"는 반드시 현재 보유한 재료만 포함하세요.
+ - "추가추천재료"는 선택 사항입니다.
+ - 현실적으로 조리 가능한 용량이 남은 재료만 사용하세요.
+ - 사용할 용량도 포함해 작성 (예: "양파 2개, 다진 돼지고기 300g")
+
+## 레시피
+ - 단계별 조리 설명
+
+## 키워드
+ - 아래 후보에서 1~3개 (정확 일치, 공백 없음)
+ - "키워드" 후보: ["디저트","샐러드","고기","해산물","국/탕","면요리","채식","한식","양식","중식","일식","동남아","퓨전"]
+
+# 해석 지침
+ - 위 형식을 위반하거나 다른 텍스트를 포함하면 응답은 무효입니다.
  - 응답 길이는 600-800자 내외로 응답할 것.
 
- # 사용자 요청
+# 사용자 요청
   ${userLine}${extra}
  
- # 반환 예시:
+# 반환 예시:
  {
    "이름": "예시 이름",
    "재료": {
@@ -77,10 +95,7 @@ ${modifiers.trim()}`
    },
    "레시피": ["1단계 ...", "2단계 ..."],
    "키워드": ["한식","채식"]
- }
-
- # 현재 재고
-${formattedIngredients}`.trim();
+ }`.trim();
 }
 
 function buildResponseSchema() {
@@ -139,6 +154,10 @@ export async function getAiRecipeJSON({
     responseMimeType: "application/json",
     maxOutputTokens: 1024,
     temperature: 1.0, // 기본값 (구글 가이드 참조)
+    thinkingConfig: {
+      thinkingLevel: "minimal", // 추론량을 최소로 제한
+      includeThoughts: false, // 추론 과정을 출력물에 포함하지 않음
+    },
   };
 
   const systemInstruction = [
@@ -169,8 +188,16 @@ export async function getAiRecipeJSON({
   const raw = await extractRawResponse(result);
   if (!raw || !raw.trim()) throw new Error("empty ai response");
 
-  const json = parseAiJsonStrict(raw);
-  return json;
+  try {
+    const json = parseAiJsonStrict(raw);
+    return json;
+  } catch (err) {
+    // 파싱 에러 발생 시 원본 텍스트를 콘솔에 출력
+    console.error("❌ AI 응답 파싱 실패!");
+    console.error("원본 텍스트(Raw):", raw); // 이 부분이 중요합니다.
+    console.error("에러 내용:", err);
+    throw err; // 에러를 다시 던져 UI에서 처리하게 함
+  }
 }
 
 // Gemini 응답에서 텍스트/JSON을 견고하게 추출하기 위한 헬퍼
