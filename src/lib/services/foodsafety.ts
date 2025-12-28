@@ -8,8 +8,24 @@ export async function fetchRecipeMatches({
   myNames: string[];
 }) {
   const url = `/api/foodsafety`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`HTTP 오류: ${response.status}`);
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+  let response;
+  try {
+    response = await fetch(url, { signal: controller.signal });
+  } catch (e: any) {
+    if (e.name === "AbortError") {
+      throw new Error("API 서버가 응답하지 않아 목록을 불러올 수 없습니다");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (!response.ok)
+    throw new Error(`식품안전나라 서버 오류 (HTTP ${response.status})`);
   const xmlText = await response.text();
 
   const parser = new DOMParser();
@@ -17,12 +33,12 @@ export async function fetchRecipeMatches({
   const resultCode = xmlDoc.querySelector("CODE")?.textContent;
   if (resultCode !== "INFO-000") {
     const resultMsg = xmlDoc.querySelector("MSG")?.textContent;
-    throw new Error(`API 오류: ${resultMsg} (코드: ${resultCode})`);
+    throw new Error(`식품안전나라 API 오류: ${resultMsg} (${resultCode})`);
   }
 
   const rows = xmlDoc.querySelectorAll("row");
   if (rows.length === 0) {
-    throw new Error("OPEN-API 응답에 레시피가 없습니다");
+    throw new Error("식품안전나라에서 레시피 정보를 찾을 수 없습니다");
   }
   // 정규화 함수: 괄호내용 제거, 공백/기호 제거, 소문자, NFKC
   const normalize = (s: string) =>
@@ -61,13 +77,13 @@ export async function fetchRecipeMatches({
     // 재료 텍스트 파싱: 소괄호 내용은 먼저 전역 제거하고, 이후 구분자로 분리
     // 개행(\n)은 토큰 내부 공백으로 간주하여 쪼개지 않도록 먼저 공백으로 변환
     const cleaned = ingredientsText
-      .replace(/\[.*?\]/g, " ")       // 대괄호 라벨 제거
-      .replace(/●.*?:/g, " ")         // 블릿 라벨 제거
-      .replace(/\(.*?\)/g, " ");      // 소괄호 내부 통째로 제거
+      .replace(/\[.*?\]/g, " ") // 대괄호 라벨 제거
+      .replace(/●.*?:/g, " ") // 블릿 라벨 제거
+      .replace(/\(.*?\)/g, " "); // 소괄호 내부 통째로 제거
 
     const noNewline = cleaned.replace(/\r?\n+/g, " ");
     const rawParts = noNewline.split(/,|\/|;|·|\u00b7/g); // 주요 구분자로 분리(개행 제외)
-  
+
     // 풀네임 표시용:
     // - 공백 및 주변 구분 부호 정리
     // - "수량만 남은 토큰(숫자/분수 + 선택 단위)" 제거: (1/2개), 200g, 1컵 등
@@ -81,7 +97,9 @@ export async function fetchRecipeMatches({
       .filter(
         (p) =>
           p.length >= 1 &&
-          !/^\d+(?:\/\d+)?(?:\.\d+)?\s*(?:개|g|kg|mg|ml|l|컵|큰술|작은술|스푼|tsp|tbsp)?$/i.test(p)
+          !/^\d+(?:\/\d+)?(?:\.\d+)?\s*(?:개|g|kg|mg|ml|l|컵|큰술|작은술|스푼|tsp|tbsp)?$/i.test(
+            p
+          )
       );
 
     // 매칭용 정규화 키
@@ -123,7 +141,9 @@ export async function fetchRecipeMatches({
       const strict = myNorms.includes(nr);
       const loose =
         !strict &&
-        myNorms.some((mn) => mn.length >= 2 && (nr.includes(mn) || mn.includes(nr)));
+        myNorms.some(
+          (mn) => mn.length >= 2 && (nr.includes(mn) || mn.includes(nr))
+        );
       if (strict || loose) {
         have.push(uniqueDisplay[i]);
       } else {
@@ -137,14 +157,25 @@ export async function fetchRecipeMatches({
       const nr = uniqueNorm[i];
       if (
         !myNorms.includes(nr) &&
-        myNorms.some((mn) => mn.length >= 2 && (nr.includes(mn) || mn.includes(nr)))
+        myNorms.some(
+          (mn) => mn.length >= 2 && (nr.includes(mn) || mn.includes(nr))
+        )
       ) {
         looseMatches.push(uniqueDisplay[i]);
       }
     }
     const looseScore = looseMatches.length;
 
-    return { name, seq, image, have, missing, unique: uniqueDisplay, looseMatches, looseScore };
+    return {
+      name,
+      seq,
+      image,
+      have,
+      missing,
+      unique: uniqueDisplay,
+      looseMatches,
+      looseScore,
+    };
   });
 
   // 2) 정렬: 보유 재료 많은 순(내림차순) → 부족 재료 적은 순 → 느슨 점수 높은 순 → 재료 수 적은 순
@@ -156,7 +187,7 @@ export async function fetchRecipeMatches({
       a.unique.length - b.unique.length
   );
   if (ordered.length === 0) {
-    throw new Error("레시피 계산 결과가 비어 있습니다");
+    throw new Error("조건에 맞는 레시피를 찾을 수 없습니다");
   }
   const result = ordered.map((item, index) => {
     return {
@@ -172,4 +203,3 @@ export async function fetchRecipeMatches({
 
   return result;
 }
-

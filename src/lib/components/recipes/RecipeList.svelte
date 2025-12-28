@@ -52,7 +52,11 @@
   {#if loading}
     <div class="d-flex justify-content-center p-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></div>
   {:else if error}
-    <div class="alert alert-danger" role="alert">{error}</div>
+    <div class="card border-danger mb-3 shadow-sm">
+      <div class="card-body text-danger d-flex flex-column align-items-center justify-content-center" style="min-height: 140px;">
+        <p class="card-text fw-bold mb-0">{error}</p>
+      </div>
+    </div>
   {:else if list.length > 0}
     {#each list.slice(0, visible) as recipe (recipe.seq)}
       <div class="card recipe-card mb-3 shadow-sm">
@@ -109,7 +113,11 @@
       </div>
     {/if}
   {:else if tried}
-    <div class="text-center text-muted p-4 border rounded-3"><p class="mb-0">일치하는 레시피가 없습니다.</p></div>
+    <div class="card border-secondary mb-3 shadow-sm">
+      <div class="card-body text-secondary d-flex flex-column align-items-center justify-content-center" style="min-height: 140px;">
+        <p class="card-text mb-0">일치하는 레시피가 없습니다.</p>
+      </div>
+    </div>
   {:else}
     <!-- 첫 로드 전에는 빈상태 문구를 숨겨 깜빡임 방지 (가벼운 플레이스홀더) -->
     <div class="placeholder-wave p-4">

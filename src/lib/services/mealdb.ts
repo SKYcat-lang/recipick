@@ -67,31 +67,67 @@ function extractIngredients(meal: MealDetail): string[] {
 
 async function searchByFirstLetter(letter: string): Promise<MealSummary[]> {
   const url = `/api/mealdb/search?f=${encodeURIComponent(letter)}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`MealDB search HTTP ${res.status}`);
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+  let res;
+  try {
+    res = await fetch(url, { signal: controller.signal });
+  } catch (e: any) {
+    if (e.name === "AbortError") {
+      throw new Error("API 서버가 응답하지 않아 목록을 불러올 수 없습니다");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (!res.ok) throw new Error(`MealDB 서버 오류 (HTTP ${res.status})`);
   const data = await res.json();
   const meals = (data?.meals ?? []) as any[];
   return meals.map((m) => ({
     idMeal: String(m.idMeal),
     strMeal: m.strMeal,
-    strMealThumb: m.strMealThumb || null
+    strMealThumb: m.strMealThumb || null,
   }));
 }
 
 async function lookupById(id: string): Promise<MealDetail | null> {
   const url = `/api/mealdb/lookup?i=${encodeURIComponent(id)}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`MealDB lookup HTTP ${res.status}`);
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+  let res;
+  try {
+    res = await fetch(url, { signal: controller.signal });
+  } catch (e: any) {
+    if (e.name === "AbortError") {
+      throw new Error("API 서버가 응답하지 않아 목록을 불러올 수 없습니다");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (!res.ok) throw new Error(`MealDB 상세 조회 오류 (HTTP ${res.status})`);
   const data = await res.json();
   const meals = data?.meals as any[] | null;
   if (!meals || meals.length === 0) return null;
   return meals[0] as MealDetail;
 }
 
-async function collectSummariesAcrossLetters(start: string, target: number): Promise<MealSummary[]> {
+async function collectSummariesAcrossLetters(
+  start: string,
+  target: number
+): Promise<MealSummary[]> {
   // 우선 시작 글자, 부족하면 a~z 순으로 채움
   const alphabet = "abcdefghijklmnopqrstuvwxyz".split("");
-  const ordered = [start.toLowerCase(), ...alphabet.filter((c) => c !== start.toLowerCase())];
+  const ordered = [
+    start.toLowerCase(),
+    ...alphabet.filter((c) => c !== start.toLowerCase()),
+  ];
 
   const seen = new Set<string>();
   const acc: MealSummary[] = [];
@@ -116,7 +152,7 @@ async function collectSummariesAcrossLetters(start: string, target: number): Pro
 export async function fetchMealDbMatches({
   myNames,
   letter = "a",
-  limit = 30
+  limit = 30,
 }: {
   myNames: string[];
   letter?: string;
@@ -168,7 +204,11 @@ export async function fetchMealDbMatches({
     for (let i = 0; i < normParts.length; i++) {
       const nr = normParts[i];
       const strict = myNorms.includes(nr);
-      const loose = !strict && myNorms.some((mn) => mn.length >= 2 && (nr.includes(mn) || mn.includes(nr)));
+      const loose =
+        !strict &&
+        myNorms.some(
+          (mn) => mn.length >= 2 && (nr.includes(mn) || mn.includes(nr))
+        );
       if (strict || loose) {
         have.push(parts[i]);
         if (loose && !strict) looseScore++;
