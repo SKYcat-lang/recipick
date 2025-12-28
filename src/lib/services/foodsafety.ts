@@ -7,7 +7,7 @@ export async function fetchRecipeMatches({
   apiKey: string;
   myNames: string[];
 }) {
-  const url = `https://openapi.foodsafetykorea.go.kr/api/${apiKey}/COOKRCP01/xml/1/100`;
+  const url = `/api/foodsafety`;
   const response = await fetch(url);
   if (!response.ok) throw new Error(`HTTP 오류: ${response.status}`);
   const xmlText = await response.text();

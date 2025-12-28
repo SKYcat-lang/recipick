@@ -66,7 +66,7 @@ function extractIngredients(meal: MealDetail): string[] {
 }
 
 async function searchByFirstLetter(letter: string): Promise<MealSummary[]> {
-  const url = `https://www.themealdb.com/api/json/v1/1/search.php?f=${encodeURIComponent(letter)}`;
+  const url = `/api/mealdb/search?f=${encodeURIComponent(letter)}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`MealDB search HTTP ${res.status}`);
   const data = await res.json();
@@ -79,7 +79,7 @@ async function searchByFirstLetter(letter: string): Promise<MealSummary[]> {
 }
 
 async function lookupById(id: string): Promise<MealDetail | null> {
-  const url = `https://www.themealdb.com/api/json/v1/1/lookup.php?i=${encodeURIComponent(id)}`;
+  const url = `/api/mealdb/lookup?i=${encodeURIComponent(id)}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`MealDB lookup HTTP ${res.status}`);
   const data = await res.json();
