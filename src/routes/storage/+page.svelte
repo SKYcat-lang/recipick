@@ -251,7 +251,7 @@
       ),
       new InventoryItem(
         findProductInfo("P008") as any,
-        { type: "exact", value: 120, unit: "kg" } as any,
+        { type: "count", value: 24 } as any,
         new Date("2025-06-17")
       ),
       new InventoryItem(

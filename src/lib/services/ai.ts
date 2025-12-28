@@ -43,14 +43,16 @@ ${modifiers.trim()}`
   const formattedIngredients = ingredients
     .map((item) => {
       return `## ${item.product.name}
--남은 수량: ${item.getDisplayAmount()}
--메모: ${item.memo || "(메모 없음)"}
+ - 남은 수량: ${item.getDisplayAmount()}
+ - 사용자 메모: ${item.memo || "메모 없음"}
 `;
     })
     .join("\n\n");
 
-  return `# 현재 재고
+  return `# 현재 보유 재료
 ${formattedIngredients}
+
+ * 없음 = 완전히 소진된 재료. 사용 금지.
 
 # 출력 규칙 (매우 중요)
  - 오직 JSON 하나만 반환하세요. 마크다운, 코드펜스, 설명, 주석 금지.
@@ -67,10 +69,13 @@ ${formattedIngredients}
  - 10자 이내로 간결하고 명확한 이름을 지정하세요.
 
 ## 재료
- - "보유재료"는 반드시 현재 보유한 재료만 포함하세요.
- - "추가추천재료"는 선택 사항입니다.
+### 보유재료
+ - 반드시 현재 보유한 재료만 포함하세요.
  - 현실적으로 조리 가능한 용량이 남은 재료만 사용하세요.
  - 사용할 용량도 포함해 작성 (예: "양파 2개, 다진 돼지고기 300g")
+### 추가추천재료
+ - 선택 사항
+ - 보유 재료도 용량이 부족하면 이곳에 표기.
 
 ## 레시피
  - 단계별 조리 설명
@@ -84,9 +89,9 @@ ${formattedIngredients}
  - 응답 길이는 600-800자 내외로 응답할 것.
 
 # 사용자 요청
-  ${userLine}${extra}
+ - ${userLine}${extra}
  
-# 반환 예시:
+# 응답 예시:
  {
    "이름": "예시 이름",
    "재료": {

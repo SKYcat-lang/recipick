@@ -94,7 +94,7 @@ export class InventoryItem {
           full: '가득 참',
           high: '넉넉함',
           half: '절반 정도',
-          low: '거의 없음',
+          low: '조금',
           empty: '없음'
         };
         return labels[this.amount.level];
